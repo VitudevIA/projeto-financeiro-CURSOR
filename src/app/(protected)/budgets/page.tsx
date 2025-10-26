@@ -39,6 +39,14 @@ export default function BudgetsPage() {
     return { status: 'ok', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-500' }
   }
 
+  // Função para debug - mostra a estrutura do budget no console
+  useEffect(() => {
+    if (budgets.length > 0) {
+      console.log('Estrutura do budget:', budgets[0])
+      console.log('Keys do budget:', Object.keys(budgets[0]))
+    }
+  }, [budgets])
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -87,19 +95,28 @@ export default function BudgetsPage() {
       {/* Budgets List */}
       {!loading && (
         <div className="space-y-4">
-          {budgets.map((budget) => {
+          {budgets.map((budget, index) => {
             const status = getBudgetStatus(budget)
             
+            // Usando acesso seguro com fallbacks
+            const budgetId = budget.id || budget.budget_id || budget._id || `budget-${index}`
+            const month = budget.month || budget.month_year || budget.date || new Date().toISOString()
+            const limitAmount = budget.limit_amount || budget.limit || budget.amount || 0
+            const spentAmount = budget.spent_amount || budget.spent || budget.used_amount || 0
+            const percentageUsed = budget.percentage_used || budget.percentage || budget.percent_used || 0
+            const categoryName = budget.category?.name || budget.category_name || 'Categoria'
+            const categoryIcon = budget.category?.icon || '💰'
+
             return (
-              <Card key={budget.id} className={`${status.bgColor} border-l-4 ${status.borderColor}`}>
+              <Card key={budgetId} className={`${status.bgColor} border-l-4 ${status.borderColor}`}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <span className="text-2xl">{budget.category.icon}</span>
+                      <span className="text-2xl">{categoryIcon}</span>
                       <div>
-                        <CardTitle className="text-lg">{budget.category.name}</CardTitle>
+                        <CardTitle className="text-lg">{categoryName}</CardTitle>
                         <CardDescription>
-                          Orçamento de {new Date(budget.month).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                          Orçamento de {new Date(month).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
                         </CardDescription>
                       </div>
                     </div>
@@ -117,7 +134,7 @@ export default function BudgetsPage() {
                         </Badge>
                       )}
                       <Badge variant="outline">
-                        {Math.round(budget.percentage_used)}%
+                        {Math.round(percentageUsed)}%
                       </Badge>
                     </div>
                   </div>
@@ -127,10 +144,10 @@ export default function BudgetsPage() {
                     {/* Progress Bar */}
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span>Gasto: {formatCurrency(budget.spent_amount)}</span>
-                        <span>Limite: {formatCurrency(budget.limit_amount)}</span>
+                        <span>Gasto: {formatCurrency(spentAmount)}</span>
+                        <span>Limite: {formatCurrency(limitAmount)}</span>
                       </div>
-                      <Progress value={Math.min(budget.percentage_used, 100)} className="h-2" />
+                      <Progress value={Math.min(percentageUsed, 100)} className="h-2" />
                     </div>
 
                     {/* Status Info */}
@@ -141,7 +158,7 @@ export default function BudgetsPage() {
                         {budget.status === 'ok' && 'Dentro do orçamento'}
                       </span>
                       <span className="text-gray-600">
-                        Restante: {formatCurrency(budget.limit_amount - budget.spent_amount)}
+                        Restante: {formatCurrency(limitAmount - spentAmount)}
                       </span>
                     </div>
 
@@ -155,7 +172,7 @@ export default function BudgetsPage() {
                         variant="outline" 
                         size="sm" 
                         className="flex-1"
-                        onClick={() => handleDelete(budget.id, budget.category.name)}
+                        onClick={() => handleDelete(budgetId, categoryName)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
                         Excluir
