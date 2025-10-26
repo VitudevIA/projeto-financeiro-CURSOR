@@ -1,0 +1,165 @@
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import { supabase } from '@/lib/supabase'
+import type { User } from '@/types/database.types'
+
+interface AuthState {
+  user: User | null
+  loading: boolean
+  signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>
+  signOut: () => Promise<void>
+  resetPassword: (email: string) => Promise<{ error: string | null }>
+  updateProfile: (updates: Partial<User>) => Promise<{ error: string | null }>
+  checkAuth: () => Promise<void>
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      loading: true,
+
+      signIn: async (email: string, password: string) => {
+        try {
+          set({ loading: true })
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          })
+
+          if (error) {
+            return { error: error.message }
+          }
+
+          if (data.user) {
+            // Fetch user profile
+            const { data: profile, error: profileError } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', data.user.id)
+              .single()
+
+            if (profileError) {
+              return { error: 'Erro ao carregar perfil do usuário' }
+            }
+
+            set({ user: profile, loading: false })
+          }
+
+          return { error: null }
+        } catch (error) {
+          return { error: 'Erro inesperado ao fazer login' }
+        }
+      },
+
+      signUp: async (email: string, password: string, fullName: string) => {
+        try {
+          set({ loading: true })
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                full_name: fullName,
+              },
+            },
+          })
+
+          if (error) {
+            return { error: error.message }
+          }
+
+          if (data.user) {
+            // User profile will be created by the trigger
+            set({ loading: false })
+          }
+
+          return { error: null }
+        } catch (error) {
+          return { error: 'Erro inesperado ao criar conta' }
+        }
+      },
+
+      signOut: async () => {
+        try {
+          await supabase.auth.signOut()
+          set({ user: null, loading: false })
+        } catch (error) {
+          console.error('Erro ao fazer logout:', error)
+        }
+      },
+
+      resetPassword: async (email: string) => {
+        try {
+          const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/reset-password`,
+          })
+
+          if (error) {
+            return { error: error.message }
+          }
+
+          return { error: null }
+        } catch (error) {
+          return { error: 'Erro inesperado ao enviar email de recuperação' }
+        }
+      },
+
+      updateProfile: async (updates: Partial<User>) => {
+        try {
+          const { user } = get()
+          if (!user) {
+            return { error: 'Usuário não autenticado' }
+          }
+
+          const { error } = await supabase
+            .from('users')
+            .update(updates)
+            .eq('id', user.id)
+
+          if (error) {
+            return { error: error.message }
+          }
+
+          set({ user: { ...user, ...updates } })
+          return { error: null }
+        } catch (error) {
+          return { error: 'Erro inesperado ao atualizar perfil' }
+        }
+      },
+
+      checkAuth: async () => {
+        try {
+          set({ loading: true })
+          const { data: { session } } = await supabase.auth.getSession()
+
+          if (session?.user) {
+            const { data: profile, error } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', session.user.id)
+              .single()
+
+            if (error) {
+              console.error('Erro ao carregar perfil:', error)
+              set({ user: null, loading: false })
+              return
+            }
+
+            set({ user: profile, loading: false })
+          } else {
+            set({ user: null, loading: false })
+          }
+        } catch (error) {
+          console.error('Erro ao verificar autenticação:', error)
+          set({ user: null, loading: false })
+        }
+      },
+    }),
+    {
+      name: 'auth-storage',
+      partialize: (state) => ({ user: state.user }),
+    }
+  )
+)
