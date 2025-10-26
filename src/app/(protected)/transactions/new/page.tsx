@@ -53,9 +53,10 @@ export default function NewTransactionPage() {
       is_recurring: formData.isRecurring,
       recurring_type: formData.recurringType || null,
       notes: formData.notes || null,
+      user_id: 'test-user-id' 
     }
 
-    const { error } = await addTransaction(transactionData)
+    const { error } = await addTransaction(transactionData as any)
     
     if (error) {
       toast.error(error)

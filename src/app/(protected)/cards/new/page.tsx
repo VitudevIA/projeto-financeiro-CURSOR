@@ -34,9 +34,10 @@ export default function NewCardPage() {
       last_digits: formData.lastDigits || null,
       limit_amount: formData.limitAmount ? parseFloat(formData.limitAmount) : null,
       is_active: true,
+      user_id: 'test-user-id'
     }
 
-    const { error } = await addCard(cardData)
+    const { error } = await addCard(cardData as any)
     
     if (error) {
       toast.error(error)

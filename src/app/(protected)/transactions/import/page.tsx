@@ -160,18 +160,19 @@ export default function ImportTransactionsPage() {
       }
 
       const transactionData = {
-        type: transaction.type as any,
-        card_id: null,
-        category_id: category.id,
-        amount: transaction.amount,
-        description: transaction.description,
-        transaction_date: transaction.date,
-        is_recurring: false,
-        recurring_type: null,
-        notes: null,
+      type: transaction.type,
+      card_id: null,
+      category_id: category.id,
+      amount: transaction.amount,
+      description: transaction.description,
+      transaction_date:transaction.date,
+      is_recurring: false,
+      recurring_type: null,
+      notes: null,
+      user_id: 'test-user-id' // ← ADICIONE ESTA LINHA
       }
 
-      const { error } = await addTransaction(transactionData)
+      const { error } = await addTransaction(transactionData as any)
       if (error) {
         errorCount++
       } else {

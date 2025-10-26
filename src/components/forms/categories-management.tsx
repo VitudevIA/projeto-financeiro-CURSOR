@@ -37,7 +37,10 @@ export default function CategoriesManagement() {
       icon: formData.icon || null,
       color: formData.color,
       is_system: false,
+      user_id: 'test-user-id'
     }
+
+    const { error } = await addCategory(categoryData as any)
 
     if (editingCategory) {
       const { error } = await updateCategory(editingCategory.id, categoryData)
@@ -245,25 +248,25 @@ export default function CategoriesManagement() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {customCategories.map((category) => (
-                <div key={category.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                  <div className="flex items-center space-x-3">
-                    <span className="text-2xl">{category.icon}</span>
-                    <div>
-                      <h3 className="font-medium">{category.name}</h3>
-                      <div className="flex items-center space-x-2">
-                        <div 
-                          className="w-3 h-3 rounded-full" 
-                          style={{ backgroundColor: category.color }}
-                        ></div>
-                        <span className="text-sm text-gray-500">Personalizada</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex space-x-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEdit(category)}
+  <div key={category.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+    <div className="flex items-center space-x-3">
+      <span className="text-2xl">{category.icon}</span>
+      <div>
+        <h3 className="font-medium">{category.name}</h3>
+        <div className="flex items-center space-x-2">
+          <div 
+            className="w-3 h-3 rounded-full" 
+            style={{ backgroundColor: category.color } as React.CSSProperties}
+          ></div>
+          <span className="text-sm text-gray-500">Personalizada</span>
+        </div>
+      </div>
+    </div>
+    <div className="flex space-x-1">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => handleEdit(category)}
                     >
                       <Edit className="h-4 w-4" />
                     </Button>

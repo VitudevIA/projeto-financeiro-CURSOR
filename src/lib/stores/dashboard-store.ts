@@ -1,6 +1,27 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { DashboardKPIs, TimeSeriesData, ChartData } from '@/types/database.types'
+
+// Defina os tipos localmente
+interface DashboardKPIs {
+  totalSpent: number
+  dailyAverage: number
+  monthlyProjection: number
+  budgetUsedPercentage: number
+  availableBalance: number
+  daysOfReserve: number
+}
+
+interface TimeSeriesData {
+  date: string
+  amount: number
+  label: string
+}
+
+interface ChartData {
+  name: string
+  value: number
+  color: string
+}
 
 interface DashboardState {
   kpis: DashboardKPIs | null

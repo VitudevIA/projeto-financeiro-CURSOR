@@ -1,6 +1,44 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { Transaction, TransactionWithDetails } from '@/types/database.types'
+import type { Transaction } from '@/types/database.types'
+
+// Defina TransactionWithDetails localmente
+interface TransactionWithDetails {
+  id: string
+  amount: number
+  card_id: string | null
+  category_id: string
+  created_at: string | null
+  description: string
+  is_recurring: boolean | null
+  notes: string | null
+  recurring_type: string | null
+  transaction_date: string
+  type: string
+  updated_at: string | null
+  user_id: string
+  category: {
+    id: string
+    name: string
+    icon: string | null
+    color: string | null
+    created_at: string | null
+    is_system: boolean | null
+    user_id: string | null
+  }
+  card?: {
+    id: string
+    name: string
+    type: string
+    brand: string | null
+    last_digits: string | null
+    limit_amount: number | null
+    is_active: boolean | null
+    created_at: string | null
+    updated_at: string | null
+    user_id: string
+  }
+}
 
 interface TransactionsState {
   transactions: TransactionWithDetails[]
