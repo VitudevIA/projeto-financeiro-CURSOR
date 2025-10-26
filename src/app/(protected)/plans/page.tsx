@@ -40,7 +40,7 @@ export default function PlansPage() {
       </div>
 
       {/* Current Plan Status */}
-      {currentPlan && (
+      {currentPlan && userPlan && (
         <Card className="border-blue-200 bg-blue-50">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -49,7 +49,7 @@ export default function PlansPage() {
                   Plano Atual: {currentPlan.name}
                 </h3>
                 <p className="text-blue-700">
-                  {userPlan.transaction_count} de {currentPlan.transaction_limit === -1 ? '∞' : currentPlan.transaction_limit} transações usadas
+                  {userPlan.transaction_count} de {currentPlan.transaction_limit === -1 ? 'Ilimitadas' : currentPlan.transaction_limit} transações usadas
                 </p>
               </div>
               <Badge variant="secondary" className="bg-blue-100 text-blue-800">
@@ -127,12 +127,12 @@ export default function PlansPage() {
                     <>
                       <Check className="mr-2 h-4 w-4" />
                       Plano Atual
-                    </Button>
+                    </>
                   ) : (
                     <>
                       <Zap className="mr-2 h-4 w-4" />
                       {plan.price === 0 ? 'Continuar Gratuito' : 'Fazer Upgrade'}
-                    </Button>
+                    </>
                   )}
                 </Button>
               </CardContent>

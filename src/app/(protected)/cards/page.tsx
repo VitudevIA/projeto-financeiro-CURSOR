@@ -135,44 +135,24 @@ export default function CardsPage() {
             </Card>
           ))}
 
-        {/* Add Card Card */}
-        <Card className="border-dashed border-2 border-gray-300 hover:border-gray-400 transition-colors">
-          <CardContent className="flex flex-col items-center justify-center py-8">
-            <CreditCard className="h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Adicionar Cartão
-            </h3>
-            <p className="text-sm text-gray-500 text-center mb-4">
-              Cadastre um novo cartão para organizar suas transações
-            </p>
-            <Link href="/cards/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Novo Cartão
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-
-        {/* Add Card Card */}
-        <Card className="border-dashed border-2 border-gray-300 hover:border-gray-400 transition-colors">
-          <CardContent className="flex flex-col items-center justify-center py-8">
-            <CreditCard className="h-12 w-12 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Adicionar Cartão
-            </h3>
-            <p className="text-sm text-gray-500 text-center mb-4">
-              Cadastre um novo cartão para organizar suas transações
-            </p>
-            <Link href="/cards/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Novo Cartão
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+          {/* Add Card Card - APENAS UM CARD DE ADIÇÃO */}
+          <Card className="border-dashed border-2 border-gray-300 hover:border-gray-400 transition-colors">
+            <CardContent className="flex flex-col items-center justify-center py-8">
+              <CreditCard className="h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Adicionar Cartão
+              </h3>
+              <p className="text-sm text-gray-500 text-center mb-4">
+                Cadastre um novo cartão para organizar suas transações
+              </p>
+              <Link href="/cards/new">
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Novo Cartão
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
         </div>
       )}
 
