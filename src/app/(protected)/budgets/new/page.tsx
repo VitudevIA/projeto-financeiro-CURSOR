@@ -38,6 +38,7 @@ export default function NewBudgetPage() {
       month: formData.month,
       limit_amount: parseFloat(formData.limitAmount),
       alert_percentage: parseInt(formData.alertPercentage),
+      user_id: 'test-user-id'
     }
 
     const { error } = await addBudget(budgetData)
