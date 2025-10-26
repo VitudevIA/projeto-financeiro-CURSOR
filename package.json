@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "generate:types": "npx supabase gen types typescript --project-id mffeygimsgjliwifouox > src/types/supabase.ts",
+    "prebuild": "npm run generate:types"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",
