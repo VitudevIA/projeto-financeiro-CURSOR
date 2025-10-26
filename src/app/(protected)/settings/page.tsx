@@ -1,388 +1,287 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAuthStore } from '@/lib/stores/auth-store'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
 import { useCardsStore } from '@/lib/stores/cards-store'
-import { useCategoriesStore } from '@/lib/stores/categories-store'
-import { formatCurrency, formatDate } from '@/utils/helpers'
-import { exportToCSV, exportToJSON, generateFilename, type ExportTransaction } from '@/utils/export-utils'
-import { exportToPDF, type PDFReportData } from '@/utils/pdf-export'
-import TransactionLimitChecker from '@/components/transaction-limit-checker'
-import { Plus, Search, Filter, Edit, Trash2, Upload, Download, FileText } from 'lucide-react'
-import Link from 'next/link'
+import { useBudgetsStore } from '@/lib/stores/budgets-store'
+import CategoriesManagement from '@/components/forms/categories-management'
+import { exportToJSON, generateFilename } from '@/utils/export-utils'
+import { User, CreditCard, Palette, Shield, Trash2, Download } from 'lucide-react'
 import { toast } from 'sonner'
+import Link from 'next/link'
 
-export default function TransactionsPage() {
-  const { transactions, loading, fetchTransactions, deleteTransaction } = useTransactionsStore()
+export default function SettingsPage() {
+  const { user, updateProfile } = useAuthStore()
+  const { transactions, fetchTransactions } = useTransactionsStore()
   const { cards, fetchCards } = useCardsStore()
-  const { categories, fetchCategories } = useCategoriesStore()
-  
-  const [filters, setFilters] = useState({
-    startDate: '',
-    endDate: '',
-    categoryId: '',
-    cardId: '',
-    type: '',
-    search: '',
-  })
+  const { budgets, fetchBudgets } = useBudgetsStore()
+  const [fullName, setFullName] = useState(user?.user_metadata?.full_name || '')
 
-  useEffect(() => {
-    fetchTransactions()
-    fetchCards()
-    fetchCategories()
-  }, [fetchTransactions, fetchCards, fetchCategories])
-
-  const handleFilterChange = (field: string, value: string) => {
-    setFilters(prev => ({ ...prev, [field]: value }))
-  }
-
-  const applyFilters = () => {
-    fetchTransactions(filters)
-  }
-
-  const handleDelete = async (id: string, description: string) => {
-    if (window.confirm(`Tem certeza que deseja excluir a transação "${description}"?`)) {
-      const { error } = await deleteTransaction(id)
+  const handleProfileUpdate = async () => {
+    if (fullName) {
+      const { error } = await updateProfile(fullName)
       if (error) {
         toast.error(error)
       } else {
-        toast.success('Transação excluída com sucesso!')
+        toast.success('Perfil atualizado com sucesso!')
       }
     }
   }
 
-  const handleExportCSV = () => {
+    const handleExportData = async () => {
     try {
-      const exportData: ExportTransaction[] = transactions.map(transaction => {
-        const tAny = transaction as any
-        return {
-          id: tAny.id || tAny.transaction_id || tAny._id,
-          date: tAny.transaction_date || tAny.date || tAny.created_at,
-          description: tAny.description || tAny.desc || tAny.name,
-          amount: tAny.amount || tAny.value || 0,
-          type: tAny.type || tAny.transaction_type,
-          category: tAny.category?.name || tAny.category_name,
-          card: tAny.card?.name || tAny.card_name,
-          notes: tAny.notes || undefined
-        }
-      })
+      // Fetch all user data
+      await Promise.all([
+        fetchTransactions(),
+        fetchCards(),
+        fetchBudgets()
+      ])
 
-      const filename = generateFilename('transacoes', 'csv')
-      exportToCSV(exportData, filename)
-      toast.success('Arquivo CSV exportado com sucesso!')
-    } catch (error) {
-      toast.error('Erro ao exportar arquivo CSV')
-    }
-  }
-
-  const handleExportJSON = () => {
-    try {
-      const exportData: ExportTransaction[] = transactions.map(transaction => {
-        const tAny = transaction as any
-        return {
-          id: tAny.id || tAny.transaction_id || tAny._id,
-          date: tAny.transaction_date || tAny.date || tAny.created_at,
-          description: tAny.description || tAny.desc || tAny.name,
-          amount: tAny.amount || tAny.value || 0,
-          type: tAny.type || tAny.transaction_type,
-          category: tAny.category?.name || tAny.category_name,
-          card: tAny.card?.name || tAny.card_name,
-          notes: tAny.notes || undefined
-        }
-      })
-
-      const filename = generateFilename('transacoes', 'json')
-      exportToJSON(exportData, filename)
-      toast.success('Arquivo JSON exportado com sucesso!')
-    } catch (error) {
-      toast.error('Erro ao exportar arquivo JSON')
-    }
-  }
-
-  const handleExportPDF = async () => {
-    try {
-      // Calcular dados para o relatório PDF
-      const totalSpent = transactions.reduce((sum, t) => {
-        const tAny = t as any
-        return sum + (tAny.amount || tAny.value || 0)
-      }, 0)
-      
-      const averageDaily = totalSpent / 30 // Simplificado
-      const monthlyProjection = totalSpent * 1.1 // Simplificado
-      
-      // Agrupar por categoria
-      const categoryMap = new Map<string, number>()
-      transactions.forEach(t => {
-        const tAny = t as any
-        const categoryName = tAny.category?.name || tAny.category_name
-        const amount = tAny.amount || tAny.value || 0
-        const current = categoryMap.get(categoryName) || 0
-        categoryMap.set(categoryName, current + amount)
-      })
-      
-      const categoryData = Array.from(categoryMap.entries()).map(([name, value]) => ({
-        name,
-        value,
-        percentage: (value / totalSpent) * 100
-      })).sort((a, b) => b.value - a.value)
-
-      const pdfData: PDFReportData = {
-        period: `Período selecionado`,
-        totalSpent,
-        averageDaily,
-        monthlyProjection,
-        budgetUsage: 0, // Seria calculado com dados de orçamento
-        availableBalance: 0, // Seria calculado com dados de saldo
-        daysOfReserve: 0, // Seria calculado
+      // Usando type assertion para o objeto completo
+      const userData = {
+        profile: {
+          id: user?.id,
+          email: user?.email,
+          full_name: user?.user_metadata?.full_name,
+          created_at: user?.created_at
+        },
         transactions: transactions.map(t => {
           const tAny = t as any
           return {
-            date: formatDate(tAny.transaction_date || tAny.date || tAny.created_at),
-            description: tAny.description || tAny.desc || tAny.name,
-            amount: tAny.amount || tAny.value || 0,
+            id: tAny.id || tAny.transaction_id || tAny._id,
+            description: tAny.description,
+            amount: tAny.amount,
+            type: tAny.type,
+            transaction_date: tAny.transaction_date,
             category: tAny.category?.name || tAny.category_name,
-            type: tAny.type || tAny.transaction_type
+            card: tAny.card?.name || tAny.card_name,
+            notes: tAny.notes
           }
         }),
-        categoryData
-      } as any
+        cards: cards.map(c => {
+          const cAny = c as any
+          return {
+            id: cAny.id || cAny.card_id || cAny._id,
+            name: cAny.name,
+            type: cAny.type,
+            brand: cAny.brand,
+            last_digits: cAny.last_digits,
+            limit_amount: cAny.limit_amount,
+            is_active: cAny.is_active
+          }
+        }),
+        budgets: budgets.map(b => {
+          const bAny = b as any
+          return {
+            id: bAny.id || bAny.budget_id || bAny._id,
+            category: bAny.category?.name || bAny.category_name,
+            month: bAny.month,
+            limit_amount: bAny.limit_amount,
+            alert_percentage: bAny.alert_percentage
+          }
+        })
+      } as any // ← ADICIONE ESTA LINHA
 
-      await exportToPDF(pdfData)
-      toast.success('Relatório PDF exportado com sucesso!')
+      const filename = generateFilename('dados_usuario', 'json')
+      exportToJSON(userData, filename)
+      toast.success('Dados exportados com sucesso!')
     } catch (error) {
-      toast.error('Erro ao exportar relatório PDF')
+      toast.error('Erro ao exportar dados')
+    }
+  }
+
+  const handleDeleteAccount = () => {
+    if (window.confirm('Tem certeza que deseja deletar sua conta? Esta ação não pode ser desfeita e todos os seus dados serão removidos permanentemente.')) {
+      // Implementar lógica de exclusão de conta
+      toast.error('Funcionalidade de exclusão de conta em desenvolvimento')
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Transaction Limit Checker */}
-      <TransactionLimitChecker />
-
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Transações</h1>
-          <p className="text-gray-600">Gerencie suas transações financeiras</p>
-        </div>
-        <div className="flex space-x-3">
-          <Button variant="outline" onClick={handleExportCSV} disabled={transactions.length === 0}>
-            <Download className="mr-2 h-4 w-4" />
-            CSV
-          </Button>
-          <Button variant="outline" onClick={handleExportJSON} disabled={transactions.length === 0}>
-            <Download className="mr-2 h-4 w-4" />
-            JSON
-          </Button>
-          <Button variant="outline" onClick={handleExportPDF} disabled={transactions.length === 0}>
-            <FileText className="mr-2 h-4 w-4" />
-            PDF
-          </Button>
-          <Link href="/transactions/import">
-            <Button variant="outline">
-              <Upload className="mr-2 h-4 w-4" />
-              Importar Excel
-            </Button>
-          </Link>
-          <Link href="/transactions/new">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Nova Transação
-            </Button>
-          </Link>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
+        <p className="text-gray-600">Gerencie suas preferências e dados da conta</p>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Data Início
-              </label>
-              <Input
-                type="date"
-                value={filters.startDate}
-                onChange={(e) => handleFilterChange('startDate', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Data Fim
-              </label>
-              <Input
-                type="date"
-                value={filters.endDate}
-                onChange={(e) => handleFilterChange('endDate', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Categoria
-              </label>
-              <Select value={filters.categoryId} onValueChange={(value) => handleFilterChange('categoryId', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Todas as categorias</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.icon} {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Cartão
-              </label>
-              <Select value={filters.cardId} onValueChange={(value) => handleFilterChange('cardId', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Todos os cartões</SelectItem>
-                  {cards.map((card) => (
-                    <SelectItem key={card.id} value={card.id}>
-                      {card.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Tipo
-              </label>
-              <Select value={filters.type} onValueChange={(value) => handleFilterChange('type', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Todos os tipos</SelectItem>
-                  <SelectItem value="credit">Crédito</SelectItem>
-                  <SelectItem value="debit">Débito</SelectItem>
-                  <SelectItem value="cash">Dinheiro</SelectItem>
-                  <SelectItem value="pix">PIX</SelectItem>
-                  <SelectItem value="boleto">Boleto</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Buscar
-              </label>
-              <Input
-                placeholder="Descrição..."
-                value={filters.search}
-                onChange={(e) => handleFilterChange('search', e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end mt-4">
-            <Button onClick={applyFilters}>
-              <Filter className="mr-2 h-4 w-4" />
-              Aplicar Filtros
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="profile" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="profile">Perfil</TabsTrigger>
+          <TabsTrigger value="categories">Categorias</TabsTrigger>
+          <TabsTrigger value="appearance">Aparência</TabsTrigger>
+          <TabsTrigger value="privacy">Privacidade</TabsTrigger>
+        </TabsList>
 
-      {/* Transactions List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Lista de Transações</CardTitle>
-          <CardDescription>
-            Suas transações financeiras organizadas
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="animate-pulse flex items-center space-x-4 p-4 border rounded-lg">
-                  <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/6"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/6"></div>
+        {/* Profile Tab */}
+        <TabsContent value="profile">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <User className="mr-2 h-5 w-5" />
+                Informações do Perfil
+              </CardTitle>
+              <CardDescription>
+                Atualize suas informações pessoais
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nome completo
+                  </label>
+                  <Input
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Seu nome completo"
+                  />
                 </div>
-              ))}
-            </div>
-          ) : transactions.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
-              Nenhuma transação encontrada. 
-              <Link href="/transactions/new" className="text-blue-600 hover:text-blue-500 ml-1">
-                Adicione sua primeira transação
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {transactions.map((transaction, index) => {
-                const tAny = transaction as any
-                const transactionId = tAny.id || tAny.transaction_id || tAny._id || `transaction-${index}`
-                const description = tAny.description || tAny.desc || tAny.name
-                const transactionDate = tAny.transaction_date || tAny.date || tAny.created_at
-                const amount = tAny.amount || tAny.value || 0
-                const type = tAny.type || tAny.transaction_type
-                const categoryName = tAny.category?.name || tAny.category_name
-                const categoryIcon = tAny.category?.icon || '💰'
-                const cardName = tAny.card?.name || tAny.card_name
-                
-                return (
-                  <div key={transactionId} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-4">
-                        <div className="flex-shrink-0">
-                          <span className="text-2xl">{categoryIcon}</span>
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-medium text-gray-900">{description}</h3>
-                          <div className="flex items-center space-x-4 text-sm text-gray-500">
-                            <span>{categoryName}</span>
-                            {cardName && (
-                              <span>• {cardName}</span>
-                            )}
-                            <span>• {formatDate(transactionDate)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="text-right">
-                        <div className="font-medium text-gray-900">
-                          {formatCurrency(amount)}
-                        </div>
-                        <div className="text-sm text-gray-500 capitalize">
-                          {type}
-                        </div>
-                      </div>
-                      <div className="flex space-x-2">
-                        <Button variant="outline" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleDelete(transactionId, description)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email
+                  </label>
+                  <Input
+                    defaultValue={user?.email || ''}
+                    disabled
+                    placeholder="seu@email.com"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Nova senha
+                </label>
+                <Input
+                  type="password"
+                  placeholder="Deixe em branco para não alterar"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Confirmar nova senha
+                </label>
+                <Input
+                  type="password"
+                  placeholder="Confirme a nova senha"
+                />
+              </div>
+              <Button onClick={handleProfileUpdate}>Salvar alterações</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Categories Tab */}
+        <TabsContent value="categories">
+          <CategoriesManagement />
+        </TabsContent>
+
+        {/* Appearance Tab */}
+        <TabsContent value="appearance">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Palette className="mr-2 h-5 w-5" />
+                Aparência
+              </CardTitle>
+              <CardDescription>
+                Personalize a aparência da aplicação
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Tema
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="cursor-pointer hover:bg-gray-50">
+                    <CardContent className="p-4 text-center">
+                      <div className="w-8 h-8 bg-white border-2 border-gray-300 rounded mx-auto mb-2"></div>
+                      <p className="text-sm font-medium">Claro</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="cursor-pointer hover:bg-gray-50">
+                    <CardContent className="p-4 text-center">
+                      <div className="w-8 h-8 bg-gray-800 border-2 border-gray-300 rounded mx-auto mb-2"></div>
+                      <p className="text-sm font-medium">Escuro</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+              <Button>Salvar preferências</Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Privacy Tab */}
+        <TabsContent value="privacy">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Shield className="mr-2 h-5 w-5" />
+                  Dados e Privacidade
+                </CardTitle>
+                <CardDescription>
+                  Gerencie seus dados pessoais e privacidade
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+                  <div>
+                    <h3 className="font-medium">Exportar dados</h3>
+                    <p className="text-sm text-gray-600">
+                      Baixe todos os seus dados em formato JSON
+                    </p>
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  <Button variant="outline" onClick={handleExportData}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Exportar
+                  </Button>
+                </div>
+                <div className="flex items-center justify-between p-4 border border-red-200 rounded-lg bg-red-50">
+                  <div>
+                    <h3 className="font-medium text-red-900">Deletar conta</h3>
+                    <p className="text-sm text-red-700">
+                      Esta ação não pode ser desfeita. Todos os seus dados serão removidos permanentemente.
+                    </p>
+                  </div>
+                  <Button variant="destructive" onClick={handleDeleteAccount}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Deletar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Documentos Legais</CardTitle>
+                <CardDescription>
+                  Termos de uso e política de privacidade
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Link href="/terms">
+                  <Button variant="outline" className="w-full justify-start">
+                    Termos de Uso
+                  </Button>
+                </Link>
+                <Link href="/privacy">
+                  <Button variant="outline" className="w-full justify-start">
+                    Política de Privacidade
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

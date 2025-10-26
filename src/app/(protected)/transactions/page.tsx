@@ -57,16 +57,19 @@ export default function TransactionsPage() {
 
   const handleExportCSV = () => {
     try {
-      const exportData: ExportTransaction[] = transactions.map(transaction => ({
-        id: transaction.id,
-        date: transaction.transaction_date,
-        description: transaction.description,
-        amount: transaction.amount,
-        type: transaction.type,
-        category: transaction.category.name,
-        card: transaction.card?.name,
-        notes: transaction.notes || undefined
-      }))
+      const exportData: ExportTransaction[] = transactions.map(transaction => {
+        const tAny = transaction as any
+        return {
+          id: tAny.id || tAny.transaction_id || tAny._id,
+          date: tAny.transaction_date || tAny.date || tAny.created_at,
+          description: tAny.description || tAny.desc || tAny.name,
+          amount: tAny.amount || tAny.value || 0,
+          type: tAny.type || tAny.transaction_type,
+          category: tAny.category?.name || tAny.category_name,
+          card: tAny.card?.name || tAny.card_name,
+          notes: tAny.notes || undefined
+        }
+      })
 
       const filename = generateFilename('transacoes', 'csv')
       exportToCSV(exportData, filename)
@@ -78,16 +81,19 @@ export default function TransactionsPage() {
 
   const handleExportJSON = () => {
     try {
-      const exportData: ExportTransaction[] = transactions.map(transaction => ({
-        id: transaction.id,
-        date: transaction.transaction_date,
-        description: transaction.description,
-        amount: transaction.amount,
-        type: transaction.type,
-        category: transaction.category.name,
-        card: transaction.card?.name,
-        notes: transaction.notes || undefined
-      }))
+      const exportData: ExportTransaction[] = transactions.map(transaction => {
+        const tAny = transaction as any
+        return {
+          id: tAny.id || tAny.transaction_id || tAny._id,
+          date: tAny.transaction_date || tAny.date || tAny.created_at,
+          description: tAny.description || tAny.desc || tAny.name,
+          amount: tAny.amount || tAny.value || 0,
+          type: tAny.type || tAny.transaction_type,
+          category: tAny.category?.name || tAny.category_name,
+          card: tAny.card?.name || tAny.card_name,
+          notes: tAny.notes || undefined
+        }
+      })
 
       const filename = generateFilename('transacoes', 'json')
       exportToJSON(exportData, filename)
@@ -100,15 +106,22 @@ export default function TransactionsPage() {
   const handleExportPDF = async () => {
     try {
       // Calcular dados para o relatório PDF
-      const totalSpent = transactions.reduce((sum, t) => sum + t.amount, 0)
+      const totalSpent = transactions.reduce((sum, t) => {
+        const tAny = t as any
+        return sum + (tAny.amount || tAny.value || 0)
+      }, 0)
+      
       const averageDaily = totalSpent / 30 // Simplificado
       const monthlyProjection = totalSpent * 1.1 // Simplificado
       
       // Agrupar por categoria
       const categoryMap = new Map<string, number>()
       transactions.forEach(t => {
-        const current = categoryMap.get(t.category.name) || 0
-        categoryMap.set(t.category.name, current + t.amount)
+        const tAny = t as any
+        const categoryName = tAny.category?.name || tAny.category_name
+        const amount = tAny.amount || tAny.value || 0
+        const current = categoryMap.get(categoryName) || 0
+        categoryMap.set(categoryName, current + amount)
       })
       
       const categoryData = Array.from(categoryMap.entries()).map(([name, value]) => ({
@@ -125,15 +138,18 @@ export default function TransactionsPage() {
         budgetUsage: 0, // Seria calculado com dados de orçamento
         availableBalance: 0, // Seria calculado com dados de saldo
         daysOfReserve: 0, // Seria calculado
-        transactions: transactions.map(t => ({
-          date: formatDate(t.transaction_date),
-          description: t.description,
-          amount: t.amount,
-          category: t.category.name,
-          type: t.type
-        })),
+        transactions: transactions.map(t => {
+          const tAny = t as any
+          return {
+            date: formatDate(tAny.transaction_date || tAny.date || tAny.created_at),
+            description: tAny.description || tAny.desc || tAny.name,
+            amount: tAny.amount || tAny.value || 0,
+            category: tAny.category?.name || tAny.category_name,
+            type: tAny.type || tAny.transaction_type
+          }
+        }),
         categoryData
-      }
+      } as any
 
       await exportToPDF(pdfData)
       toast.success('Relatório PDF exportado com sucesso!')
@@ -141,6 +157,7 @@ export default function TransactionsPage() {
       toast.error('Erro ao exportar relatório PDF')
     }
   }
+
   return (
     <div className="space-y-6">
       {/* Transaction Limit Checker */}
@@ -307,49 +324,61 @@ export default function TransactionsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {transactions.map((transaction) => (
-                <div key={transaction.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-4">
-                      <div className="flex-shrink-0">
-                        <span className="text-2xl">{transaction.category.icon}</span>
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-900">{transaction.description}</h3>
-                        <div className="flex items-center space-x-4 text-sm text-gray-500">
-                          <span>{transaction.category.name}</span>
-                          {transaction.card && (
-                            <span>• {transaction.card.name}</span>
-                          )}
-                          <span>• {formatDate(transaction.transaction_date)}</span>
+              {transactions.map((transaction, index) => {
+                const tAny = transaction as any
+                const transactionId = tAny.id || tAny.transaction_id || tAny._id || `transaction-${index}`
+                const description = tAny.description || tAny.desc || tAny.name
+                const transactionDate = tAny.transaction_date || tAny.date || tAny.created_at
+                const amount = tAny.amount || tAny.value || 0
+                const type = tAny.type || tAny.transaction_type
+                const categoryName = tAny.category?.name || tAny.category_name
+                const categoryIcon = tAny.category?.icon || '💰'
+                const cardName = tAny.card?.name || tAny.card_name
+                
+                return (
+                  <div key={transactionId} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-4">
+                        <div className="flex-shrink-0">
+                          <span className="text-2xl">{categoryIcon}</span>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{description}</h3>
+                          <div className="flex items-center space-x-4 text-sm text-gray-500">
+                            <span>{categoryName}</span>
+                            {cardName && (
+                              <span>• {cardName}</span>
+                            )}
+                            <span>• {formatDate(transactionDate)}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <div className="font-medium text-gray-900">
-                        {formatCurrency(transaction.amount)}
+                    <div className="flex items-center space-x-4">
+                      <div className="text-right">
+                        <div className="font-medium text-gray-900">
+                          {formatCurrency(amount)}
+                        </div>
+                        <div className="text-sm text-gray-500 capitalize">
+                          {type}
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-500 capitalize">
-                        {transaction.type}
+                      <div className="flex space-x-2">
+                        <Button variant="outline" size="sm">
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => handleDelete(transactionId, description)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex space-x-2">
-                      <Button variant="outline" size="sm">
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleDelete(transaction.id, transaction.description)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
