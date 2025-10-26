@@ -116,9 +116,10 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
 
       // Update local state
       const { transactions } = get()
-      const updatedTransactions = transactions.map(transaction => 
-        transaction.id === id ? { ...transaction, ...data } : transaction
-      )
+      const updatedTransactions = transactions.map(transaction => {
+        const transactionAny = transaction as any
+        return transactionAny.id === id ? { ...transaction, ...data } : transaction
+      })
       set({ transactions: updatedTransactions })
 
       return { error: null }
@@ -140,7 +141,10 @@ export const useTransactionsStore = create<TransactionsState>((set, get) => ({
 
       // Remove from local state
       const { transactions } = get()
-      const filteredTransactions = transactions.filter(transaction => transaction.id !== id)
+      const filteredTransactions = transactions.filter(transaction => {
+        const transactionAny = transaction as any
+        return transactionAny.id !== id
+      })
       set({ transactions: filteredTransactions })
 
       return { error: null }
