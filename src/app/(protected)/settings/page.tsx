@@ -33,7 +33,7 @@ export default function SettingsPage() {
     }
   }
 
-  const handleExportData = async () => {
+    const handleExportData = async () => {
     try {
       // Fetch all user data
       await Promise.all([
@@ -42,6 +42,7 @@ export default function SettingsPage() {
         fetchBudgets()
       ])
 
+      // Usando type assertion para o objeto completo
       const userData = {
         profile: {
           id: user?.id,
@@ -49,33 +50,42 @@ export default function SettingsPage() {
           full_name: user?.user_metadata?.full_name,
           created_at: user?.created_at
         },
-        transactions: transactions.map(t => ({
-          id: t.id,
-          description: t.description,
-          amount: t.amount,
-          type: t.type,
-          transaction_date: t.transaction_date,
-          category: t.category.name,
-          card: t.card?.name,
-          notes: t.notes
-        })),
-        cards: cards.map(c => ({
-          id: c.id,
-          name: c.name,
-          type: c.type,
-          brand: c.brand,
-          last_digits: c.last_digits,
-          limit_amount: c.limit_amount,
-          is_active: c.is_active
-        })),
-        budgets: budgets.map(b => ({
-          id: b.id,
-          category: b.category.name,
-          month: b.month,
-          limit_amount: b.limit_amount,
-          alert_percentage: b.alert_percentage
-        }))
-      }
+        transactions: transactions.map(t => {
+          const tAny = t as any
+          return {
+            id: tAny.id || tAny.transaction_id || tAny._id,
+            description: tAny.description,
+            amount: tAny.amount,
+            type: tAny.type,
+            transaction_date: tAny.transaction_date,
+            category: tAny.category?.name || tAny.category_name,
+            card: tAny.card?.name || tAny.card_name,
+            notes: tAny.notes
+          }
+        }),
+        cards: cards.map(c => {
+          const cAny = c as any
+          return {
+            id: cAny.id || cAny.card_id || cAny._id,
+            name: cAny.name,
+            type: cAny.type,
+            brand: cAny.brand,
+            last_digits: cAny.last_digits,
+            limit_amount: cAny.limit_amount,
+            is_active: cAny.is_active
+          }
+        }),
+        budgets: budgets.map(b => {
+          const bAny = b as any
+          return {
+            id: bAny.id || bAny.budget_id || bAny._id,
+            category: bAny.category?.name || bAny.category_name,
+            month: bAny.month,
+            limit_amount: bAny.limit_amount,
+            alert_percentage: bAny.alert_percentage
+          }
+        })
+      } as any // ← ADICIONE ESTA LINHA
 
       const filename = generateFilename('dados_usuario', 'json')
       exportToJSON(userData, filename)
@@ -137,7 +147,7 @@ export default function SettingsPage() {
                     Email
                   </label>
                   <Input
-                    defaultValue={user?.id || ''}
+                    defaultValue={user?.email || ''}
                     disabled
                     placeholder="seu@email.com"
                   />
