@@ -2,7 +2,16 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import type { Budget } from '@/types/database.types'
 
-interface BudgetWithDetails extends Budget {
+interface BudgetWithDetails {
+  // Definindo todas as propriedades explicitamente
+  id: string
+  user_id: string
+  category_id: string
+  month: string
+  limit_amount: number
+  alert_percentage: number
+  created_at: string
+  updated_at: string
   category: {
     id: string
     name: string
@@ -80,7 +89,7 @@ export const useBudgetsStore = create<BudgetsState>((set, get) => ({
           spent_amount: spentAmount,
           percentage_used: percentageUsed,
           status
-        })
+        } as BudgetWithDetails)
       }
 
       set({ budgets: budgetsWithDetails, loading: false })
@@ -112,7 +121,7 @@ export const useBudgetsStore = create<BudgetsState>((set, get) => ({
         spent_amount: 0,
         percentage_used: 0,
         status: 'ok'
-      }
+      } as BudgetWithDetails
       set({ budgets: [budgetWithDetails, ...budgets] })
 
       return { error: null }
@@ -139,9 +148,10 @@ export const useBudgetsStore = create<BudgetsState>((set, get) => ({
 
       // Update local state
       const { budgets } = get()
-      const updatedBudgets = budgets.map(budget => 
-        budget.id === id ? { ...budget, ...data } : budget
-      )
+      const updatedBudgets = budgets.map(budget => {
+        const budgetAny = budget as any
+        return budgetAny.id === id ? { ...budget, ...data } : budget
+      })
       set({ budgets: updatedBudgets })
 
       return { error: null }
@@ -163,7 +173,10 @@ export const useBudgetsStore = create<BudgetsState>((set, get) => ({
 
       // Remove from local state
       const { budgets } = get()
-      const filteredBudgets = budgets.filter(budget => budget.id !== id)
+      const filteredBudgets = budgets.filter(budget => {
+        const budgetAny = budget as any
+        return budgetAny.id !== id
+      })
       set({ budgets: filteredBudgets })
 
       return { error: null }
