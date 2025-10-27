@@ -92,8 +92,8 @@ export class InsightsGenerator {
       return date.getMonth() === lastMonth && date.getFullYear() === lastMonthYear
     })
 
-    const currentTotal = currentMonthTransactions.reduce((sum, t) => sum + t.amount, 0)
-    const lastTotal = lastMonthTransactions.reduce((sum, t) => sum + t.amount, 0)
+    const currentTotal = currentMonthTransactions.reduce((sum: number, t) => sum + t.amount, 0)
+    const lastTotal = lastMonthTransactions.reduce((sum: number, t) => sum + t.amount, 0)
 
     if (lastTotal > 0) {
       const percentageChange = ((currentTotal - lastTotal) / lastTotal) * 100
@@ -122,8 +122,8 @@ export class InsightsGenerator {
     
     // Calcular média e desvio padrão dos gastos
     const amounts = transactions.map(t => t.amount)
-    const mean = amounts.reduce((sum, amount) => sum + amount, 0) / amounts.length
-    const variance = amounts.reduce((sum, amount) => sum + Math.pow(amount - mean, 2), 0) / amounts.length
+    const mean = amounts.reduce((sum: number, amount) => sum + amount, 0) / amounts.length
+    const variance = amounts.reduce((sum: number, amount) => sum + Math.pow(amount - mean, 2), 0) / amounts.length
     const standardDeviation = Math.sqrt(variance)
     
     // Detectar transações que são 2x maiores que a média + 1 desvio padrão
@@ -208,7 +208,7 @@ export class InsightsGenerator {
       new Date(t.transaction_date) >= threeMonthsAgo
     )
     
-    const totalSpent = recentTransactions.reduce((sum, t) => sum + t.amount, 0)
+    const totalSpent = recentTransactions.reduce((sum: number, t) => sum + t.amount, 0)
     const averageMonthly = totalSpent / 3
     
     // Previsão para o mês atual
@@ -217,7 +217,7 @@ export class InsightsGenerator {
       new Date(t.transaction_date) >= currentMonthStart
     )
     
-    const currentMonthSpent = currentMonthTransactions.reduce((sum, t) => sum + t.amount, 0)
+    const currentMonthSpent = currentMonthTransactions.reduce((sum: number, t) => sum + t.amount, 0)
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate()
     const daysPassed = currentDate.getDate()
     const daysRemaining = daysInMonth - daysPassed
@@ -275,7 +275,7 @@ export class InsightsGenerator {
           continue
         }
 
-        const spent = categoryTransactions.reduce((sum, t) => sum + t.amount, 0)
+        const spent = categoryTransactions.reduce((sum: number, t: any) => sum + t.amount, 0)
         const percentage = (spent / budget.limit_amount) * 100
 
         if (percentage >= budget.alert_percentage) {
