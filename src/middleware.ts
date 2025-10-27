@@ -15,12 +15,8 @@ export async function middleware(req: NextRequest) {
 
   if (!supabaseUrl || !supabaseKey) {
     console.error('Missing Supabase environment variables')
-    // Se estiver em desenvolvimento, permita continuar sem redirecionar
-    if (process.env.NODE_ENV === 'development') {
-      return response
-    }
-    // Em produção, redirecione para uma página de erro
-    return NextResponse.redirect(new URL('/error', req.url))
+    // Retorna sem redirecionar para evitar loop
+    return response
   }
 
   const supabase = createServerClient(
@@ -80,13 +76,13 @@ export async function middleware(req: NextRequest) {
   const isProtectedRoute = protectedRoutes.some(route => req.nextUrl.pathname.startsWith(route))
   const isAuthRoute = authRoutes.some(route => req.nextUrl.pathname.startsWith(route))
 
-  // Redirect to login if accessing protected route without session
-  if (isProtectedRoute && !session) {
+  // Evita loop: não redireciona se já está na página de destino
+  if (isProtectedRoute && !session && !req.nextUrl.pathname.startsWith('/login')) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  // Redirect to dashboard if accessing auth routes with session
-  if (isAuthRoute && session) {
+  // Evita loop: não redireciona se já está no dashboard
+  if (isAuthRoute && session && !req.nextUrl.pathname.startsWith('/dashboard')) {
     return NextResponse.redirect(new URL('/dashboard', req.url))
   }
 
