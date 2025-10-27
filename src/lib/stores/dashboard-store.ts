@@ -68,7 +68,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       }
 
       // Calculate KPIs
-      const totalSpent = transactions?.reduce((sum, t) => sum + t.amount, 0) || 0
+      const totalSpent = transactions?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0
       const daysInMonth = Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) + 1
       const daysPassed = Math.ceil((now.getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)) + 1
       const dailyAverage = daysPassed > 0 ? totalSpent / daysPassed : 0
@@ -94,7 +94,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       // Generate time series data
       const timeSeriesMap = new Map<string, number>()
-      transactions?.forEach(transaction => {
+      transactions?.forEach((transaction: any) => {
         const date = transaction.transaction_date
         const current = timeSeriesMap.get(date) || 0
         timeSeriesMap.set(date, current + transaction.amount)
@@ -108,7 +108,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       // Generate category data
       const categoryMap = new Map<string, number>()
-      transactions?.forEach(transaction => {
+      transactions?.forEach((transaction: any) => {
         const categoryName = transaction.category.name
         const current = categoryMap.get(categoryName) || 0
         categoryMap.set(categoryName, current + transaction.amount)
@@ -122,7 +122,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       // Get top 5 transactions
       const topTransactions = transactions
-        ?.sort((a, b) => b.amount - a.amount)
+        ?.sort((a: any, b: any) => b.amount - a.amount)
         .slice(0, 5) || []
 
       set({
