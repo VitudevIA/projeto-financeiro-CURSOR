@@ -74,7 +74,7 @@ export const useBudgetsStore = create<BudgetsState>((set, get) => ({
           continue
         }
 
-        const spentAmount = transactions?.reduce((sum, t) => sum + t.amount, 0) || 0
+        const spentAmount = transactions?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0
         const percentageUsed = budget.limit_amount > 0 ? (spentAmount / budget.limit_amount) * 100 : 0
         
         let status: 'ok' | 'warning' | 'exceeded' = 'ok'
