@@ -1,12 +1,13 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useDashboardStore } from '@/lib/stores/dashboard-store'
 import { formatCurrency } from '@/utils/helpers'
-import { Plus, TrendingUp, TrendingDown, DollarSign, Calendar, Target } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, DollarSign, Calendar, Target, LogOut } from 'lucide-react'
 import Link from 'next/link'
 import TimeSeriesChart from '@/components/charts/time-series-chart'
 import PieChartComponent from '@/components/charts/pie-chart'
@@ -14,12 +15,39 @@ import BarChartComponent from '@/components/charts/bar-chart'
 import InsightsCard from '@/components/insights/insights-card'
 
 export default function DashboardPage() {
-  const { user } = useAuthStore()
+  const { user, signOut } = useAuthStore()
   const { kpis, timeSeriesData, categoryData, topTransactions, loading, fetchDashboardData } = useDashboardStore()
+  const router = useRouter()
+
+  // Proteção de rota
+  useEffect(() => {
+    if (!user) {
+      router.push('/login')
+    }
+  }, [user, router])
+
+  // Função de logout
+  const handleSignOut = async () => {
+    await signOut()
+    router.push('/login')
+  }
 
   useEffect(() => {
-    fetchDashboardData()
-  }, [fetchDashboardData])
+    if (user) {
+      fetchDashboardData()
+    }
+  }, [fetchDashboardData, user])
+
+  // Loading se não tem user
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold">Carregando...</h1>
+        </div>
+      </div>
+    )
+  }
 
   if (loading) {
     return (
@@ -110,6 +138,11 @@ export default function DashboardPage() {
               Novo Cartão
             </Button>
           </Link>
+          {/* Botão de Logout */}
+          <Button onClick={handleSignOut} variant="outline">
+            <LogOut className="mr-2 h-4 w-4" />
+            Sair
+          </Button>
         </div>
       </div>
 
