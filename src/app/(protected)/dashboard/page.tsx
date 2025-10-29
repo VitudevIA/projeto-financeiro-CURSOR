@@ -13,12 +13,14 @@ import TimeSeriesChart from '@/components/charts/time-series-chart'
 import PieChartComponent from '@/components/charts/pie-chart'
 import BarChartComponent from '@/components/charts/bar-chart'
 import InsightsCard from '@/components/insights/insights-card'
+import { useUserDataSync } from '@/hooks/useUserDataSync'
 
 export default function DashboardPage() {
   const { user, signOut } = useAuthStore()
   const { kpis, timeSeriesData, categoryData, topTransactions, loading, fetchDashboardData } = useDashboardStore()
   const router = useRouter()
 
+  useUserDataSync()
   // Proteção de rota
   useEffect(() => {
     if (!user) {

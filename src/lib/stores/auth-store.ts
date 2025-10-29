@@ -3,6 +3,12 @@ import { persist } from 'zustand/middleware'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@/types/database.types'
 
+interface UserPreferences {
+  user_id: string
+  dashboard_data: any
+  updated_at: string
+}
+
 // Cria uma instância do cliente para o store
 const supabase = createClient()
 
@@ -15,6 +21,7 @@ interface AuthState {
   resetPassword: (email: string) => Promise<{ error: string | null }>
   updateProfile: (updates: Partial<User>) => Promise<{ error: string | null }>
   checkAuth: () => Promise<void>
+  syncUserData: () => Promise<{ error: string | null }>
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -52,6 +59,8 @@ export const useAuthStore = create<AuthState>()(
             }
 
             set({ user: profile, loading: false })
+            await get().syncUserData()
+
             return { error: null }
           }
 
@@ -174,6 +183,9 @@ export const useAuthStore = create<AuthState>()(
             }
 
             set({ user: profile, loading: false })
+
+            await get().syncUserData()
+            
           } else {
             set({ user: null, loading: false })
           }
@@ -182,6 +194,25 @@ export const useAuthStore = create<AuthState>()(
           set({ user: null, loading: false })
         }
       },
+
+      syncUserData: async () => {
+  try {
+    const { user } = get()
+    if (!user) return { error: 'Usuário não autenticado' }
+
+    // Versão simplificada - primeiro vamos testar a conexão
+    console.log('Iniciando sincronização para usuário:', user.id)
+    
+    // Por enquanto, só vamos logar que a função foi chamada
+    // Depois que criar a tabela no Supabase, implementamos o resto
+    console.log('Função syncUserData chamada - tabela user_preferences precisa ser criada')
+    
+    return { error: null }
+  } catch (error) {
+    console.error('Erro na sincronização:', error)
+    return { error: 'Erro ao sincronizar dados' }
+  }
+},
     }),
     {
       name: 'auth-storage',
