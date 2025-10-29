@@ -200,58 +200,77 @@ syncUserData: async () => {
     const { user } = get()
     if (!user) return { error: 'Usuário não autenticado' }
 
-    console.log('🔄 syncUserData: Testando conexão com Supabase...')
+    console.log('🔄 syncUserData: Iniciando sincronização completa...')
     
     const supabase = createClient()
     
-    // Teste SIMPLES - apenas verificar se consegue inserir
-    const testData = { 
-      test: true, 
-      timestamp: new Date().toISOString() 
-    }
-    
-    console.log('📤 Tentando upsert para user_id:', user.id)
-    
-    const { data, error } = await supabase
-      .from('user_preferences' as any) // ✅ ADICIONE 'as any' AQUI
-      .upsert({
-        user_id: user.id,
-        dashboard_data: testData,
-        updated_at: new Date().toISOString()
-      } as any) // ✅ ADICIONE 'as any' AQUI TAMBÉM
-      .select()
+    // 1. Buscar dados do Supabase
+    const { data: remoteData, error } = await supabase
+      .from('user_preferences' as any)
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
 
-    if (error) {
-      console.log('❌ syncUserData: ERRO DETALHADO:', {
-        message: error.message,
-        code: error.code,
-        details: error.details
-      })
+    // 2. Verificar dados locais do dashboard
+    const localDashboardData = localStorage.getItem('dashboard-storage')
+    
+    if (!error && remoteData) {
+      const data = remoteData as any
+      const localParsed = localDashboardData ? JSON.parse(localDashboardData) : null
       
-      // Se for erro de chave única, tenta UPDATE
-      if (error.code === '23505') {
-        console.log('🔧 Tentando UPDATE em vez de UPSERT...')
+      console.log('📊 Dados remotos encontrados, atualizados em:', data.updated_at)
+      console.log('💾 Dados locais encontrados?', !!localParsed)
+      
+      if (!localParsed || new Date(data.updated_at) > new Date(localParsed.state?.updated_at || 0)) {
+        // Dados remotos são mais recentes - atualizar local
+        if (data.dashboard_data) {
+          localStorage.setItem('dashboard-storage', JSON.stringify({
+            ...localParsed,
+            state: {
+              ...data.dashboard_data,
+              updated_at: data.updated_at
+            }
+          }))
+          console.log('✅ syncUserData: Dados sincronizados DO Supabase para localStorage')
+        }
+      } else if (localParsed && localParsed.state) {
+        // Dados locais são mais recentes - atualizar Supabase
         const { error: updateError } = await supabase
-          .from('user_preferences' as any) // ✅ ADICIONE 'as any' AQUI
-          .update({
-            dashboard_data: testData,
+          .from('user_preferences' as any)
+          .upsert({
+            user_id: user.id,
+            dashboard_data: localParsed.state,
             updated_at: new Date().toISOString()
-          } as any) // ✅ ADICIONE 'as any' AQUI TAMBÉM
-          .eq('user_id', user.id)
-          
-        if (updateError) {
-          console.log('❌ UPDATE também falhou:', updateError)
-        } else {
-          console.log('✅ UPDATE funcionou!')
+          } as any)
+        
+        if (!updateError) {
+          console.log('✅ syncUserData: Dados salvos NO Supabase (locais → remoto)')
+        }
+      }
+    } else if (localDashboardData) {
+      // Primeira vez - salvar dados locais no Supabase
+      const localParsed = JSON.parse(localDashboardData)
+      if (localParsed.state) {
+        const { error: updateError } = await supabase
+          .from('user_preferences' as any)
+          .upsert({
+            user_id: user.id,
+            dashboard_data: localParsed.state,
+            updated_at: new Date().toISOString()
+          } as any)
+        
+        if (!updateError) {
+          console.log('✅ syncUserData: Dados salvos no Supabase (primeira sincronização)')
         }
       }
     } else {
-      console.log('✅ syncUserData: UPSERT funcionou! Dados:', data)
+      console.log('ℹ️ syncUserData: Nenhum dado para sincronizar')
     }
 
+    console.log('🏁 syncUserData: Sincronização concluída')
     return { error: null }
   } catch (error) {
-    console.error('❌ syncUserData: Erro inesperado:', error)
+    console.error('❌ syncUserData: Erro na sincronização:', error)
     return { error: 'Erro ao sincronizar dados' }
   }
 },
