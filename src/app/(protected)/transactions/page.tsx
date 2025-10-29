@@ -158,10 +158,20 @@ export default function TransactionsPage() {
     }
   }
 
+  // ✅ CORREÇÃO: Filtrar categorias para garantir que tenham id válido
+  const validCategories = categories.filter(category => 
+    category.id && category.id.trim() !== ''
+  )
+
+  // ✅ CORREÇÃO: Filtrar cartões para garantir que tenham id válido
+  const validCards = cards.filter(card => 
+    card.id && card.id.trim() !== ''
+  )
+
   return (
     <div className="space-y-6">
-      {/* Transaction Limit Checker */}
-      <TransactionLimitChecker />
+      {/* Transaction Limit Checker - COMENTADO TEMPORARIAMENTE */}
+      {/* <TransactionLimitChecker /> */}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -231,7 +241,7 @@ export default function TransactionsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Todas as categorias</SelectItem>
-                  {categories.map((category) => (
+                  {validCategories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       {category.icon} {category.name}
                     </SelectItem>
@@ -249,7 +259,7 @@ export default function TransactionsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Todos os cartões</SelectItem>
-                  {cards.map((card) => (
+                  {validCards.map((card) => (
                     <SelectItem key={card.id} value={card.id}>
                       {card.name}
                     </SelectItem>
