@@ -7,11 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuthStore } from '@/lib/stores/auth-store'
+import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 
 export default function LoginPage() {
-  console.log('URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-  console.log('KEY exists:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -28,15 +27,32 @@ export default function LoginPage() {
       if (error) {
         toast.error(error)
         setLoading(false)
-      } else {
-        toast.success('Login realizado com sucesso!')
-        
-        // Aguarda um pouco para garantir que a sessão foi salva
-        await new Promise(resolve => setTimeout(resolve, 500))
-        
-        // Força recarregar a página para o middleware reconhecer a sessão
-        window.location.href = '/dashboard'
+        return
       }
+
+      // DEBUG - Verificar sessão após login
+      console.log('🔍 Verificando sessão após login...')
+      const supabase = createClient()
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      console.log('Session data:', sessionData)
+      console.log('Session error:', sessionError)
+      
+      if (sessionData.session) {
+        console.log('✅ Sessão criada com sucesso!')
+        console.log('User ID:', sessionData.session.user.id)
+        console.log('Email:', sessionData.session.user.email)
+      } else {
+        console.error('❌ Nenhuma sessão encontrada após login!')
+      }
+      // FIM DEBUG
+
+      toast.success('Login realizado com sucesso!')
+      
+      // Aguarda um pouco para garantir que a sessão foi salva
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Força recarregar a página para o middleware reconhecer a sessão
+      window.location.href = '/dashboard'
     } catch (err) {
       console.error('Erro no login:', err)
       toast.error('Erro ao fazer login. Tente novamente.')
@@ -117,4 +133,3 @@ export default function LoginPage() {
       </div>
     </div>
   )
-}
