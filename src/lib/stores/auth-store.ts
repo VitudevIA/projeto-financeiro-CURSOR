@@ -195,37 +195,86 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      syncUserData: async () => {
+            syncUserData: async () => {
         try {
           const { user } = get()
           if (!user) return { error: 'Usuário não autenticado' }
 
-          console.log('🔄 syncUserData: Testando conexão com Supabase...')
+          console.log('🔄 syncUserData: Iniciando sincronização...')
           
           const supabase = createClient()
           
-          // Teste mais simples possível
-          const { data, error } = await supabase
+          // 1. Buscar dados do Supabase
+          const { data: remoteData, error } = await supabase
             .from('user_preferences' as any)
             .select('*')
             .eq('user_id', user.id)
+            .single()
 
-          if (error) {
-            console.log('❌ syncUserData: Erro:', error.message)
-          } else {
-            console.log('✅ syncUserData: Conexão OK. Registros encontrados:', data?.length || 0)
-          }
+          // 2. Verificar dados locais
+          const localDashboardData = localStorage.getItem('dashboard-storage')
           
+          if (!error && remoteData) {
+            const localParsed = localDashboardData ? JSON.parse(localDashboardData) : null
+            
+            // Extrair dados de forma segura com type assertion
+            const remoteUpdated = (remoteData as any).updated_at
+            const remoteDashboardData = (remoteData as any).dashboard_data
+            
+            if (!localParsed || new Date(remoteUpdated) > new Date(localParsed.state?.updated_at || 0)) {
+              // Dados remotos são mais recentes
+              if (remoteDashboardData) {
+                localStorage.setItem('dashboard-storage', JSON.stringify({
+                  ...localParsed,
+                  state: {
+                    ...remoteDashboardData,
+                    updated_at: remoteUpdated
+                  }
+                }))
+                console.log('✅ syncUserData: Dados sincronizados DO Supabase')
+              }
+            } else if (localParsed && localParsed.state) {
+              // Dados locais são mais recentes
+              const { error: updateError } = await supabase
+                .from('user_preferences' as any)
+                .upsert({
+                  user_id: user.id,
+                  dashboard_data: localParsed.state,
+                  updated_at: new Date().toISOString()
+                } as any)
+              
+              if (!updateError) {
+                console.log('✅ syncUserData: Dados salvos NO Supabase')
+              }
+            }
+          } else if (localDashboardData) {
+            // Primeira vez - salvar dados locais no Supabase
+            const localParsed = JSON.parse(localDashboardData)
+            if (localParsed.state) {
+              const { error: updateError } = await supabase
+                .from('user_preferences' as any)
+                .upsert({
+                  user_id: user.id,
+                  dashboard_data: localParsed.state,
+                  updated_at: new Date().toISOString()
+                } as any)
+              
+              if (!updateError) {
+                console.log('✅ syncUserData: Dados salvos no Supabase (primeira vez)')
+              }
+            }
+          }
+
           return { error: null }
         } catch (error) {
           console.error('❌ syncUserData: Erro:', error)
           return { error: 'Erro ao sincronizar dados' }
         }
-      }, // ✅ VÍRGULA ADICIONADA AQUI
+      }, // ✅ VÍRGULA AQUI
     }),
     {
       name: 'auth-storage',
       partialize: (state) => ({ user: state.user }),
     }
-  ) // ✅ FECHA PARÊNTESES DO PERSIST
-) // ✅ FECHA PARÊNTESES DO CREATE
+  )
+)
