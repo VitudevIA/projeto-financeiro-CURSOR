@@ -1,28 +1,28 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { createClient } from '@/lib/supabase/client'
-import type { User } from '@/types/database.types'
+import type { AppUser } from '@/types/user_types'
 
+// Interface para user_preferences
 interface UserPreferences {
-  user_id: string  // Mantém como string - o UUID vem como string do JSON
+  user_id: string
   dashboard_data: any
-  updated_at: string  // Mantém como string - o timestamp vem como string do JSON
+  updated_at: string
 }
 
-// Cria uma instância do cliente para o store
-const supabase = createClient()
-
 interface AuthState {
-  user: User | null
+  user: AppUser | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<{ error: string | null }>
-  updateProfile: (updates: Partial<User>) => Promise<{ error: string | null }>
+  updateProfile: (updates: Partial<AppUser>) => Promise<{ error: string | null }>
   checkAuth: () => Promise<void>
   syncUserData: () => Promise<{ error: string | null }>
 }
+
+const supabase = createClient()
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -34,7 +34,6 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ loading: true })
           
-          // IMPORTANTE: signInWithPassword salva a sessão automaticamente nos cookies
           const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password,
@@ -46,7 +45,6 @@ export const useAuthStore = create<AuthState>()(
           }
 
           if (data.user) {
-            // Fetch user profile
             const { data: profile, error: profileError } = await supabase
               .from('users')
               .select('*')
@@ -58,10 +56,14 @@ export const useAuthStore = create<AuthState>()(
               return { error: 'Erro ao carregar perfil do usuário' }
             }
 
-            set({ user: profile, loading: false })
-            await get().syncUserData()
-
-            return { error: null }
+            if (profile) {
+              set({ user: profile as AppUser, loading: false })
+              await get().syncUserData()
+              return { error: null }
+            } else {
+              set({ loading: false })
+              return { error: 'Perfil do usuário não encontrado' }
+            }
           }
 
           set({ loading: false })
@@ -92,10 +94,8 @@ export const useAuthStore = create<AuthState>()(
           }
 
           if (data.user) {
-            // Aguarda um pouco para o trigger criar o perfil
-            await new Promise(resolve => setTimeout(resolve, 1000))
+            await new Promise(resolve => setTimeout(resolve, 2000))
             
-            // Busca o perfil criado
             const { data: profile } = await supabase
               .from('users')
               .select('*')
@@ -103,7 +103,7 @@ export const useAuthStore = create<AuthState>()(
               .single()
 
             if (profile) {
-              set({ user: profile, loading: false })
+              set({ user: profile as AppUser, loading: false })
             } else {
               set({ loading: false })
             }
@@ -141,7 +141,7 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      updateProfile: async (updates: Partial<User>) => {
+      updateProfile: async (updates: Partial<AppUser>) => {
         try {
           const { user } = get()
           if (!user) {
@@ -182,10 +182,12 @@ export const useAuthStore = create<AuthState>()(
               return
             }
 
-            set({ user: profile, loading: false })
-
-            await get().syncUserData()
-            
+            if (profile) {
+              set({ user: profile as AppUser, loading: false })
+              await get().syncUserData()
+            } else {
+              set({ user: null, loading: false })
+            }
           } else {
             set({ user: null, loading: false })
           }
@@ -195,85 +197,65 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-syncUserData: async () => {
-  try {
-    const { user } = get()
-    if (!user) return { error: 'Usuário não autenticado' }
+      syncUserData: async () => {
+        try {
+          const { user } = get()
+          if (!user) return { error: 'Usuário não autenticado' }
 
-    console.log('🔄 syncUserData: Iniciando sincronização completa...')
-    
-    const supabase = createClient()
-    
-    // 1. Buscar dados do Supabase
-    const { data: remoteData, error } = await supabase
-      .from('user_preferences' as any)
-      .select('*')
-      .eq('user_id', user.id)
-      .single()
+          const supabase = createClient()
+          
+          // ✅ CORREÇÃO: Tipagem explícita para user_preferences
+          const { data: remoteData, error } = await supabase
+            .from('user_preferences' as any)
+            .select('*')
+            .eq('user_id', user.id)
+            .single() as { data: UserPreferences | null, error: any }
 
-    // 2. Verificar dados locais do dashboard
-    const localDashboardData = localStorage.getItem('dashboard-storage')
-    
-    if (!error && remoteData) {
-      const data = remoteData as any
-      const localParsed = localDashboardData ? JSON.parse(localDashboardData) : null
-      
-      console.log('📊 Dados remotos encontrados, atualizados em:', data.updated_at)
-      console.log('💾 Dados locais encontrados?', !!localParsed)
-      
-      if (!localParsed || new Date(data.updated_at) > new Date(localParsed.state?.updated_at || 0)) {
-        // Dados remotos são mais recentes - atualizar local
-        if (data.dashboard_data) {
-          localStorage.setItem('dashboard-storage', JSON.stringify({
-            ...localParsed,
-            state: {
-              ...data.dashboard_data,
-              updated_at: data.updated_at
+          const localDashboardData = localStorage.getItem('dashboard-storage')
+          
+          if (!error && remoteData) {
+            const localParsed = localDashboardData ? JSON.parse(localDashboardData) : null
+            
+            if (!localParsed || new Date(remoteData.updated_at) > new Date(localParsed.state?.updated_at || 0)) {
+              if (remoteData.dashboard_data) {
+                localStorage.setItem('dashboard-storage', JSON.stringify({
+                  ...localParsed,
+                  state: {
+                    ...remoteData.dashboard_data,
+                    updated_at: remoteData.updated_at
+                  }
+                }))
+              }
+            } else if (localParsed && localParsed.state) {
+              // ✅ CORREÇÃO: Tipagem explícita no upsert
+              await supabase
+                .from('user_preferences' as any)
+                .upsert({
+                  user_id: user.id,
+                  dashboard_data: localParsed.state,
+                  updated_at: new Date().toISOString()
+                } as any)
             }
-          }))
-          console.log('✅ syncUserData: Dados sincronizados DO Supabase para localStorage')
-        }
-      } else if (localParsed && localParsed.state) {
-        // Dados locais são mais recentes - atualizar Supabase
-        const { error: updateError } = await supabase
-          .from('user_preferences' as any)
-          .upsert({
-            user_id: user.id,
-            dashboard_data: localParsed.state,
-            updated_at: new Date().toISOString()
-          } as any)
-        
-        if (!updateError) {
-          console.log('✅ syncUserData: Dados salvos NO Supabase (locais → remoto)')
-        }
-      }
-    } else if (localDashboardData) {
-      // Primeira vez - salvar dados locais no Supabase
-      const localParsed = JSON.parse(localDashboardData)
-      if (localParsed.state) {
-        const { error: updateError } = await supabase
-          .from('user_preferences' as any)
-          .upsert({
-            user_id: user.id,
-            dashboard_data: localParsed.state,
-            updated_at: new Date().toISOString()
-          } as any)
-        
-        if (!updateError) {
-          console.log('✅ syncUserData: Dados salvos no Supabase (primeira sincronização)')
-        }
-      }
-    } else {
-      console.log('ℹ️ syncUserData: Nenhum dado para sincronizar')
-    }
+          } else if (localDashboardData) {
+            const localParsed = JSON.parse(localDashboardData)
+            if (localParsed.state) {
+              // ✅ CORREÇÃO: Tipagem explícita no upsert
+              await supabase
+                .from('user_preferences' as any)
+                .upsert({
+                  user_id: user.id,
+                  dashboard_data: localParsed.state,
+                  updated_at: new Date().toISOString()
+                } as any)
+            }
+          }
 
-    console.log('🏁 syncUserData: Sincronização concluída')
-    return { error: null }
-  } catch (error) {
-    console.error('❌ syncUserData: Erro na sincronização:', error)
-    return { error: 'Erro ao sincronizar dados' }
-  }
-},
+          return { error: null }
+        } catch (error) {
+          console.error('Erro na sincronização:', error)
+          return { error: 'Erro ao sincronizar dados' }
+        }
+      },
     }),
     {
       name: 'auth-storage',
