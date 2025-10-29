@@ -10,11 +10,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
 import { useCardsStore } from '@/lib/stores/cards-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
+import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { formatCurrency } from '@/utils/helpers'
-import { supabase } from '@/lib/supabase' // ← ADICIONE ESTA IMPORT
 
 export default function NewTransactionPage() {
   const [formData, setFormData] = useState({
@@ -45,7 +44,7 @@ export default function NewTransactionPage() {
     setLoading(true)
 
     try {
-      // ✅ CORREÇÃO: Obter usuário autenticado
+      const supabase = createClient()
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       
       if (userError || !user) {
@@ -54,7 +53,7 @@ export default function NewTransactionPage() {
         return
       }
 
-      console.log('🔍 DEBUG - User ID:', user.id) // Para debug
+      console.log('🔍 DEBUG - User ID:', user.id)
 
       const transactionData = {
         type: formData.type,
@@ -66,10 +65,10 @@ export default function NewTransactionPage() {
         is_recurring: formData.isRecurring,
         recurring_type: formData.recurringType || null,
         notes: formData.notes || null,
-        user_id: user.id // ✅ CORREÇÃO AQUI - UUID real do usuário
+        user_id: user.id
       }
 
-      console.log('🔍 DEBUG - Transaction data:', transactionData) // Para debug
+      console.log('🔍 DEBUG - Transaction data:', transactionData)
 
       const { error } = await addTransaction(transactionData as any)
       

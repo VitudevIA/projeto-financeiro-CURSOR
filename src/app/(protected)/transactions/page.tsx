@@ -11,7 +11,6 @@ import { useCategoriesStore } from '@/lib/stores/categories-store'
 import { formatCurrency, formatDate } from '@/utils/helpers'
 import { exportToCSV, exportToJSON, generateFilename, type ExportTransaction } from '@/utils/export-utils'
 import { exportToPDF, type PDFReportData } from '@/utils/pdf-export'
-import TransactionLimitChecker from '@/components/transaction-limit-checker'
 import { Plus, Search, Filter, Edit, Trash2, Upload, Download, FileText } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -24,9 +23,9 @@ export default function TransactionsPage() {
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
-    categoryId: '',
-    cardId: '',
-    type: '',
+    categoryId: 'all',
+    cardId: 'all',
+    type: 'all',
     search: '',
   })
 
@@ -41,7 +40,14 @@ export default function TransactionsPage() {
   }
 
   const applyFilters = () => {
-    fetchTransactions(filters)
+    // Converter 'all' de volta para string vazia para a API
+    const apiFilters = {
+      ...filters,
+      categoryId: filters.categoryId === 'all' ? '' : filters.categoryId,
+      cardId: filters.cardId === 'all' ? '' : filters.cardId,
+      type: filters.type === 'all' ? '' : filters.type,
+    }
+    fetchTransactions(apiFilters)
   }
 
   const handleDelete = async (id: string, description: string) => {
@@ -105,16 +111,14 @@ export default function TransactionsPage() {
 
   const handleExportPDF = async () => {
     try {
-      // Calcular dados para o relatório PDF
       const totalSpent = transactions.reduce((sum, t) => {
         const tAny = t as any
         return sum + (tAny.amount || tAny.value || 0)
       }, 0)
       
-      const averageDaily = totalSpent / 30 // Simplificado
-      const monthlyProjection = totalSpent * 1.1 // Simplificado
+      const averageDaily = totalSpent / 30
+      const monthlyProjection = totalSpent * 1.1
       
-      // Agrupar por categoria
       const categoryMap = new Map<string, number>()
       transactions.forEach(t => {
         const tAny = t as any
@@ -135,9 +139,9 @@ export default function TransactionsPage() {
         totalSpent,
         averageDaily,
         monthlyProjection,
-        budgetUsage: 0, // Seria calculado com dados de orçamento
-        availableBalance: 0, // Seria calculado com dados de saldo
-        daysOfReserve: 0, // Seria calculado
+        budgetUsage: 0,
+        availableBalance: 0,
+        daysOfReserve: 0,
         transactions: transactions.map(t => {
           const tAny = t as any
           return {
@@ -158,21 +162,16 @@ export default function TransactionsPage() {
     }
   }
 
-  // ✅ CORREÇÃO: Filtrar categorias para garantir que tenham id válido
   const validCategories = categories.filter(category => 
     category.id && category.id.trim() !== ''
   )
 
-  // ✅ CORREÇÃO: Filtrar cartões para garantir que tenham id válido
   const validCards = cards.filter(card => 
     card.id && card.id.trim() !== ''
   )
 
   return (
     <div className="space-y-6">
-      {/* Transaction Limit Checker - COMENTADO TEMPORARIAMENTE */}
-      {/* <TransactionLimitChecker /> */}
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -240,7 +239,7 @@ export default function TransactionsPage() {
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todas as categorias</SelectItem>
+                  <SelectItem value="all">Todas as categorias</SelectItem>
                   {validCategories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       {category.icon} {category.name}
@@ -258,7 +257,7 @@ export default function TransactionsPage() {
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os cartões</SelectItem>
+                  <SelectItem value="all">Todos os cartões</SelectItem>
                   {validCards.map((card) => (
                     <SelectItem key={card.id} value={card.id}>
                       {card.name}
@@ -276,7 +275,7 @@ export default function TransactionsPage() {
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os tipos</SelectItem>
+                  <SelectItem value="all">Todos os tipos</SelectItem>
                   <SelectItem value="credit">Crédito</SelectItem>
                   <SelectItem value="debit">Débito</SelectItem>
                   <SelectItem value="cash">Dinheiro</SelectItem>
