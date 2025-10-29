@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { formatCurrency } from '@/utils/helpers'
+import { supabase } from '@/lib/supabase' // ← ADICIONE ESTA IMPORT
 
 export default function NewTransactionPage() {
   const [formData, setFormData] = useState({
@@ -43,29 +44,48 @@ export default function NewTransactionPage() {
     e.preventDefault()
     setLoading(true)
 
-    const transactionData = {
-      type: formData.type,
-      card_id: formData.cardId || null,
-      category_id: formData.categoryId,
-      amount: parseFloat(formData.amount),
-      description: formData.description,
-      transaction_date: formData.transactionDate,
-      is_recurring: formData.isRecurring,
-      recurring_type: formData.recurringType || null,
-      notes: formData.notes || null,
-      user_id: 'test-user-id' 
-    }
+    try {
+      // ✅ CORREÇÃO: Obter usuário autenticado
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      
+      if (userError || !user) {
+        toast.error('Usuário não autenticado')
+        setLoading(false)
+        return
+      }
 
-    const { error } = await addTransaction(transactionData as any)
-    
-    if (error) {
-      toast.error(error)
-    } else {
-      toast.success('Transação adicionada com sucesso!')
-      router.push('/transactions')
+      console.log('🔍 DEBUG - User ID:', user.id) // Para debug
+
+      const transactionData = {
+        type: formData.type,
+        card_id: formData.cardId || null,
+        category_id: formData.categoryId,
+        amount: parseFloat(formData.amount),
+        description: formData.description,
+        transaction_date: formData.transactionDate,
+        is_recurring: formData.isRecurring,
+        recurring_type: formData.recurringType || null,
+        notes: formData.notes || null,
+        user_id: user.id // ✅ CORREÇÃO AQUI - UUID real do usuário
+      }
+
+      console.log('🔍 DEBUG - Transaction data:', transactionData) // Para debug
+
+      const { error } = await addTransaction(transactionData as any)
+      
+      if (error) {
+        console.error('🔍 DEBUG - Error from addTransaction:', error)
+        toast.error(error)
+      } else {
+        toast.success('Transação adicionada com sucesso!')
+        router.push('/transactions')
+      }
+    } catch (error) {
+      console.error('🔍 DEBUG - Catch error:', error)
+      toast.error('Erro ao salvar transação')
+    } finally {
+      setLoading(false)
     }
-    
-    setLoading(false)
   }
 
   const handleInputChange = (field: string, value: string | boolean) => {
