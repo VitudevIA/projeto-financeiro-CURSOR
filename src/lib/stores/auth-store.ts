@@ -196,27 +196,36 @@ export const useAuthStore = create<AuthState>()(
       },
 
       syncUserData: async () => {
-  try {
-    const { user } = get()
-    if (!user) return { error: 'Usuário não autenticado' }
+        try {
+          const { user } = get()
+          if (!user) return { error: 'Usuário não autenticado' }
 
-    // Versão simplificada - primeiro vamos testar a conexão
-    console.log('Iniciando sincronização para usuário:', user.id)
-    
-    // Por enquanto, só vamos logar que a função foi chamada
-    // Depois que criar a tabela no Supabase, implementamos o resto
-    console.log('Função syncUserData chamada - tabela user_preferences precisa ser criada')
-    
-    return { error: null }
-  } catch (error) {
-    console.error('Erro na sincronização:', error)
-    return { error: 'Erro ao sincronizar dados' }
-  }
-},
+          console.log('🔄 syncUserData: Testando conexão com Supabase...')
+          
+          const supabase = createClient()
+          
+          // Teste mais simples possível
+          const { data, error } = await supabase
+            .from('user_preferences' as any)
+            .select('*')
+            .eq('user_id', user.id)
+
+          if (error) {
+            console.log('❌ syncUserData: Erro:', error.message)
+          } else {
+            console.log('✅ syncUserData: Conexão OK. Registros encontrados:', data?.length || 0)
+          }
+          
+          return { error: null }
+        } catch (error) {
+          console.error('❌ syncUserData: Erro:', error)
+          return { error: 'Erro ao sincronizar dados' }
+        }
+      }, // ✅ VÍRGULA ADICIONADA AQUI
     }),
     {
       name: 'auth-storage',
       partialize: (state) => ({ user: state.user }),
     }
-  )
-)
+  ) // ✅ FECHA PARÊNTESES DO PERSIST
+) // ✅ FECHA PARÊNTESES DO CREATE
