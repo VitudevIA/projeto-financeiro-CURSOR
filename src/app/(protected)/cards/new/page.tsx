@@ -10,6 +10,7 @@ import { useCardsStore } from '@/lib/stores/cards-store'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase' // ← ADICIONE ESTA IMPORT
 
 export default function NewCardPage() {
   const [formData, setFormData] = useState({
@@ -27,26 +28,40 @@ export default function NewCardPage() {
     e.preventDefault()
     setLoading(true)
 
-    const cardData = {
-      name: formData.name,
-      type: formData.type,
-      brand: formData.brand || null,
-      last_digits: formData.lastDigits || null,
-      limit_amount: formData.limitAmount ? parseFloat(formData.limitAmount) : null,
-      is_active: true,
-      user_id: 'test-user-id'
-    }
+    try {
+      // ✅ CORREÇÃO: Obter o usuário atual corretamente
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      
+      if (userError || !user) {
+        toast.error('Usuário não autenticado')
+        setLoading(false)
+        return
+      }
 
-    const { error } = await addCard(cardData as any)
-    
-    if (error) {
-      toast.error(error)
-    } else {
-      toast.success('Cartão adicionado com sucesso!')
-      router.push('/cards')
+      const cardData = {
+        name: formData.name,
+        type: formData.type,
+        brand: formData.brand || null,
+        last_digits: formData.lastDigits || null,
+        limit_amount: formData.limitAmount ? parseFloat(formData.limitAmount) : null,
+        is_active: true,
+        user_id: user.id // ✅ AGORA COM UUID VÁLIDO
+      }
+
+      const { error } = await addCard(cardData as any)
+      
+      if (error) {
+        toast.error(error)
+      } else {
+        toast.success('Cartão adicionado com sucesso!')
+        router.push('/cards')
+      }
+    } catch (error) {
+      console.error('Erro ao criar cartão:', error)
+      toast.error('Erro ao salvar cartão')
+    } finally {
+      setLoading(false)
     }
-    
-    setLoading(false)
   }
 
   const handleInputChange = (field: string, value: string) => {
