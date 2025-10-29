@@ -97,32 +97,69 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         return
       }
 
-      // Buscar orçamentos do usuário para cálculo mais preciso
-      const { data: budgets, error: budgetsError } = await supabase
-        .from('budgets')
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('end_date', start)
-        .lte('start_date', end)
+      console.log(`📈 Transações encontradas: ${transactions?.length || 0}`)
 
-      if (budgetsError) {
-        console.warn('Erro ao buscar orçamentos:', budgetsError)
+      let totalBudget = 0
+      let availableBalance = 0
+
+      // Buscar orçamentos do usuário (com fallback seguro)
+      try {
+        const { data: budgets, error: budgetsError } = await supabase
+          .from('budgets')
+          .select('amount, start_date, end_date')
+          .eq('user_id', user.id)
+          .or(`start_date.lte.${end},end_date.gte.${start}`)
+
+        if (!budgetsError && budgets) {
+          totalBudget = budgets.reduce((sum: number, b: any) => sum + (b.amount || 0), 0)
+          console.log(`💰 Orçamento total: ${totalBudget}`)
+        } else if (budgetsError && budgetsError.code !== '42703') {
+          console.warn('Erro ao buscar orçamentos:', budgetsError)
+        }
+      } catch (budgetsError) {
+        console.warn('Erro na busca de orçamentos:', budgetsError)
         // Continua sem orçamentos
       }
 
-      // Buscar saldo disponível (exemplo - ajuste conforme sua estrutura)
-      const { data: accountData, error: accountError } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('user_id', user.id)
-        .single()
+      // Buscar saldo disponível (com fallback seguro)
+      try {
+        // Tenta buscar da tabela accounts primeiro
+        const { data: accountData, error: accountError } = await supabase
+          .from('accounts')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single()
 
-      if (accountError) {
-        console.warn('Erro ao buscar saldo da conta:', accountError)
+        if (!accountError && accountData) {
+          availableBalance = accountData.balance || 0
+        } else {
+          // Fallback: calcula saldo baseado em transações de receita vs despesa
+          const { data: incomeTransactions } = await supabase
+            .from('transactions')
+            .select('amount, type')
+            .eq('user_id', user.id)
+            .lte('transaction_date', end)
+
+          if (incomeTransactions) {
+            const totalIncome = incomeTransactions
+              .filter((t: any) => t.type === 'income')
+              .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
+            
+            const totalExpenses = incomeTransactions
+              .filter((t: any) => t.type === 'expense')
+              .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
+            
+            availableBalance = totalIncome - totalExpenses
+          }
+        }
+        console.log(`💳 Saldo disponível: ${availableBalance}`)
+      } catch (accountError) {
+        console.warn('Erro na busca de saldo:', accountError)
+        availableBalance = 0
       }
 
       // Calcular KPIs
-      const totalSpent = transactions?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0
+      const totalSpent = transactions?.reduce((sum: number, t: any) => sum + (t.amount || 0), 0) || 0
       
       const startDateObj = new Date(start)
       const endDateObj = new Date(end)
@@ -136,17 +173,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const monthlyProjection = dailyAverage * daysInMonth
 
       // Calcular uso do orçamento
-      const totalBudget = budgets?.reduce((sum: number, b: any) => sum + b.amount, 0) || 0
-      const budgetUsedPercentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
-
-      // Calcular saldo disponível
-      const availableBalance = accountData?.balance || 0
+      const budgetUsedPercentage = totalBudget > 0 ? 
+        Math.min((totalSpent / totalBudget) * 100, 100) : 0
 
       // Calcular dias de reserva
-      const daysOfReserve = dailyAverage > 0 ? Math.floor(availableBalance / dailyAverage) : 0
+      const daysOfReserve = dailyAverage > 0 ? 
+        Math.floor(Math.max(availableBalance, 0) / dailyAverage) : 0
 
       const kpis: DashboardKPIs = {
-        totalSpent,
+        totalSpent: Number(totalSpent.toFixed(2)),
         dailyAverage: Number(dailyAverage.toFixed(2)),
         monthlyProjection: Number(monthlyProjection.toFixed(2)),
         budgetUsedPercentage: Number(budgetUsedPercentage.toFixed(1)),
@@ -169,7 +204,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       transactions?.forEach((transaction: any) => {
         const date = transaction.transaction_date
         const current = timeSeriesMap.get(date) || 0
-        timeSeriesMap.set(date, current + transaction.amount)
+        timeSeriesMap.set(date, current + (transaction.amount || 0))
       })
 
       const timeSeriesData: TimeSeriesData[] = Array.from(timeSeriesMap.entries())
@@ -185,7 +220,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       transactions?.forEach((transaction: any) => {
         const categoryName = transaction.category?.name || 'Sem Categoria'
         const current = categoryMap.get(categoryName) || 0
-        categoryMap.set(categoryName, current + transaction.amount)
+        categoryMap.set(categoryName, current + (transaction.amount || 0))
       })
 
       const categoryData: ChartData[] = Array.from(categoryMap.entries())
@@ -199,15 +234,15 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       // Pegar top 5 transações
       const topTransactions = transactions
         ?.filter((t: any) => t.amount > 0) // Apenas transações com valor positivo
-        .sort((a: any, b: any) => b.amount - a.amount)
+        .sort((a: any, b: any) => (b.amount || 0) - (a.amount || 0))
         .slice(0, 5)
         .map((transaction: any) => ({
           ...transaction,
-          amount: Number(transaction.amount.toFixed(2))
+          amount: Number((transaction.amount || 0).toFixed(2))
         })) || []
 
       console.log('✅ Dashboard: Dados carregados com sucesso')
-      console.log(`📈 KPIs: ${transactions?.length || 0} transações processadas`)
+      console.log(`📊 KPIs: Total gasto: R$ ${kpis.totalSpent}, Média diária: R$ ${kpis.dailyAverage}`)
 
       set({
         kpis,
