@@ -4,9 +4,9 @@ import { createClient } from '@/lib/supabase/client'
 import type { User } from '@/types/database.types'
 
 interface UserPreferences {
-  user_id: string
+  user_id: string  // Mantém como string - o UUID vem como string do JSON
   dashboard_data: any
-  updated_at: string
+  updated_at: string  // Mantém como string - o timestamp vem como string do JSON
 }
 
 // Cria uma instância do cliente para o store
@@ -195,82 +195,66 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-            syncUserData: async () => {
-        try {
-          const { user } = get()
-          if (!user) return { error: 'Usuário não autenticado' }
+syncUserData: async () => {
+  try {
+    const { user } = get()
+    if (!user) return { error: 'Usuário não autenticado' }
 
-          console.log('🔄 syncUserData: Iniciando sincronização...')
-          
-          const supabase = createClient()
-          
-          // 1. Buscar dados do Supabase
-          const { data: remoteData, error } = await supabase
-            .from('user_preferences' as any)
-            .select('*')
-            .eq('user_id', user.id)
-            .single()
+    console.log('🔄 syncUserData: Testando conexão com Supabase...')
+    
+    const supabase = createClient()
+    
+    // Teste SIMPLES - apenas verificar se consegue inserir
+    const testData = { 
+      test: true, 
+      timestamp: new Date().toISOString() 
+    }
+    
+    console.log('📤 Tentando upsert para user_id:', user.id)
+    
+    const { data, error } = await supabase
+      .from('user_preferences' as any) // ✅ ADICIONE 'as any' AQUI
+      .upsert({
+        user_id: user.id,
+        dashboard_data: testData,
+        updated_at: new Date().toISOString()
+      } as any) // ✅ ADICIONE 'as any' AQUI TAMBÉM
+      .select()
 
-          // 2. Verificar dados locais
-          const localDashboardData = localStorage.getItem('dashboard-storage')
+    if (error) {
+      console.log('❌ syncUserData: ERRO DETALHADO:', {
+        message: error.message,
+        code: error.code,
+        details: error.details
+      })
+      
+      // Se for erro de chave única, tenta UPDATE
+      if (error.code === '23505') {
+        console.log('🔧 Tentando UPDATE em vez de UPSERT...')
+        const { error: updateError } = await supabase
+          .from('user_preferences' as any) // ✅ ADICIONE 'as any' AQUI
+          .update({
+            dashboard_data: testData,
+            updated_at: new Date().toISOString()
+          } as any) // ✅ ADICIONE 'as any' AQUI TAMBÉM
+          .eq('user_id', user.id)
           
-          if (!error && remoteData) {
-            const localParsed = localDashboardData ? JSON.parse(localDashboardData) : null
-            
-            // Extrair dados de forma segura com type assertion
-            const remoteUpdated = (remoteData as any).updated_at
-            const remoteDashboardData = (remoteData as any).dashboard_data
-            
-            if (!localParsed || new Date(remoteUpdated) > new Date(localParsed.state?.updated_at || 0)) {
-              // Dados remotos são mais recentes
-              if (remoteDashboardData) {
-                localStorage.setItem('dashboard-storage', JSON.stringify({
-                  ...localParsed,
-                  state: {
-                    ...remoteDashboardData,
-                    updated_at: remoteUpdated
-                  }
-                }))
-                console.log('✅ syncUserData: Dados sincronizados DO Supabase')
-              }
-            } else if (localParsed && localParsed.state) {
-              // Dados locais são mais recentes
-              const { error: updateError } = await supabase
-                .from('user_preferences' as any)
-                .upsert({
-                  user_id: user.id,
-                  dashboard_data: localParsed.state,
-                  updated_at: new Date().toISOString()
-                } as any)
-              
-              if (!updateError) {
-                console.log('✅ syncUserData: Dados salvos NO Supabase')
-              }
-            }
-          } else if (localDashboardData) {
-            // Primeira vez - salvar dados locais no Supabase
-            const localParsed = JSON.parse(localDashboardData)
-            if (localParsed.state) {
-              const { error: updateError } = await supabase
-                .from('user_preferences' as any)
-                .upsert({
-                  user_id: user.id,
-                  dashboard_data: localParsed.state,
-                  updated_at: new Date().toISOString()
-                } as any)
-              
-              if (!updateError) {
-                console.log('✅ syncUserData: Dados salvos no Supabase (primeira vez)')
-              }
-            }
-          }
-
-          return { error: null }
-        } catch (error) {
-          console.error('❌ syncUserData: Erro:', error)
-          return { error: 'Erro ao sincronizar dados' }
+        if (updateError) {
+          console.log('❌ UPDATE também falhou:', updateError)
+        } else {
+          console.log('✅ UPDATE funcionou!')
         }
-      }, // ✅ VÍRGULA AQUI
+      }
+    } else {
+      console.log('✅ syncUserData: UPSERT funcionou! Dados:', data)
+    }
+
+    return { error: null }
+  } catch (error) {
+    console.error('❌ syncUserData: Erro inesperado:', error)
+    return { error: 'Erro ao sincronizar dados' }
+  }
+},
     }),
     {
       name: 'auth-storage',
