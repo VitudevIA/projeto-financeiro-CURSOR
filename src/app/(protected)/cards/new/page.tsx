@@ -10,7 +10,7 @@ import { useCardsStore } from '@/lib/stores/cards-store'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import { supabase } from '@/lib/supabase' // ← ADICIONE ESTA IMPORT
+import { supabase } from '@/lib/supabase'
 
 export default function NewCardPage() {
   const [formData, setFormData] = useState({
