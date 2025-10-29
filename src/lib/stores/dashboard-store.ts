@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
+import type { User } from '@/types/database.types'
 
 // Defina os tipos localmente
 interface DashboardKPIs {
@@ -29,7 +30,7 @@ interface DashboardState {
   categoryData: ChartData[]
   topTransactions: any[]
   loading: boolean
-  fetchDashboardData: (startDate?: string, endDate?: string) => Promise<void>
+  fetchDashboardData: (user: User | null, startDate?: string, endDate?: string) => Promise<void>
 }
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
@@ -39,9 +40,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   topTransactions: [],
   loading: false,
 
-  fetchDashboardData: async (startDate, endDate) => {
+  fetchDashboardData: async (user, startDate, endDate) => {
     try {
       set({ loading: true })
+
+      if (!user) {
+      console.log('❌ Dashboard: Nenhum usuário logado')
+      set({ loading: false })
+      return
+    }
+
+    console.log('📊 Dashboard: Buscando dados para usuário:', user.id)
 
       const now = new Date()
       const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -58,6 +67,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           category:categories(*),
           card:cards(*)
         `)
+        .eq('user_id', user.id)
         .gte('transaction_date', start)
         .lte('transaction_date', end)
         .order('transaction_date', { ascending: true })

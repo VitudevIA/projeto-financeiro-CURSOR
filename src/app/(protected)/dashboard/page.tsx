@@ -35,10 +35,10 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    if (user) {
-      fetchDashboardData()
-    }
-  }, [fetchDashboardData, user])
+  if (user) {
+    fetchDashboardData(user) // ✅ Agora passa o user como parâmetro
+  }
+}, [fetchDashboardData, user])
 
   // Loading se não tem user
   if (!user) {
