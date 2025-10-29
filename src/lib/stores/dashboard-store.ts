@@ -75,7 +75,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       console.log(`📅 Período: ${start} até ${end}`)
 
-      // Fetch transactions para o período
+      // Fetch apenas transações (sem budgets ou accounts)
       const { data: transactions, error: transactionsError } = await supabase
         .from('transactions')
         .select(`
@@ -99,66 +99,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       console.log(`📈 Transações encontradas: ${transactions?.length || 0}`)
 
-      let totalBudget = 0
-      let availableBalance = 0
-
-      // Buscar orçamentos do usuário (com fallback seguro)
-      try {
-        const { data: budgets, error: budgetsError } = await supabase
-          .from('budgets')
-          .select('amount, start_date, end_date')
-          .eq('user_id', user.id)
-          .or(`start_date.lte.${end},end_date.gte.${start}`)
-
-        if (!budgetsError && budgets) {
-          totalBudget = budgets.reduce((sum: number, b: any) => sum + (b.amount || 0), 0)
-          console.log(`💰 Orçamento total: ${totalBudget}`)
-        } else if (budgetsError && budgetsError.code !== '42703') {
-          console.warn('Erro ao buscar orçamentos:', budgetsError)
-        }
-      } catch (budgetsError) {
-        console.warn('Erro na busca de orçamentos:', budgetsError)
-        // Continua sem orçamentos
-      }
-
-      // Buscar saldo disponível (com fallback seguro)
-      try {
-        // Tenta buscar da tabela accounts primeiro
-        const { data: accountData, error: accountError } = await supabase
-          .from('accounts')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single()
-
-        if (!accountError && accountData) {
-          availableBalance = accountData.balance || 0
-        } else {
-          // Fallback: calcula saldo baseado em transações de receita vs despesa
-          const { data: incomeTransactions } = await supabase
-            .from('transactions')
-            .select('amount, type')
-            .eq('user_id', user.id)
-            .lte('transaction_date', end)
-
-          if (incomeTransactions) {
-            const totalIncome = incomeTransactions
-              .filter((t: any) => t.type === 'income')
-              .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
-            
-            const totalExpenses = incomeTransactions
-              .filter((t: any) => t.type === 'expense')
-              .reduce((sum: number, t: any) => sum + (t.amount || 0), 0)
-            
-            availableBalance = totalIncome - totalExpenses
-          }
-        }
-        console.log(`💳 Saldo disponível: ${availableBalance}`)
-      } catch (accountError) {
-        console.warn('Erro na busca de saldo:', accountError)
-        availableBalance = 0
-      }
-
-      // Calcular KPIs
+      // Calcular KPIs apenas com transações
       const totalSpent = transactions?.reduce((sum: number, t: any) => sum + (t.amount || 0), 0) || 0
       
       const startDateObj = new Date(start)
@@ -172,20 +113,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const dailyAverage = daysPassed > 0 ? totalSpent / daysPassed : 0
       const monthlyProjection = dailyAverage * daysInMonth
 
-      // Calcular uso do orçamento
-      const budgetUsedPercentage = totalBudget > 0 ? 
-        Math.min((totalSpent / totalBudget) * 100, 100) : 0
-
-      // Calcular dias de reserva
-      const daysOfReserve = dailyAverage > 0 ? 
-        Math.floor(Math.max(availableBalance, 0) / dailyAverage) : 0
+      // Valores padrão para funcionalidades futuras
+      const budgetUsedPercentage = 0
+      const availableBalance = 0
+      const daysOfReserve = 0
 
       const kpis: DashboardKPIs = {
         totalSpent: Number(totalSpent.toFixed(2)),
         dailyAverage: Number(dailyAverage.toFixed(2)),
         monthlyProjection: Number(monthlyProjection.toFixed(2)),
-        budgetUsedPercentage: Number(budgetUsedPercentage.toFixed(1)),
-        availableBalance: Number(availableBalance.toFixed(2)),
+        budgetUsedPercentage,
+        availableBalance,
         daysOfReserve,
       }
 
