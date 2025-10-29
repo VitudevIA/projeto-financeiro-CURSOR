@@ -1,7 +1,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 import type { User } from '@/types/database.types'
+
+// Cria uma instância do cliente para o store
+const supabase = createClient()
 
 interface AuthState {
   user: User | null
@@ -23,12 +26,15 @@ export const useAuthStore = create<AuthState>()(
       signIn: async (email: string, password: string) => {
         try {
           set({ loading: true })
+          
+          // IMPORTANTE: signInWithPassword salva a sessão automaticamente nos cookies
           const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password,
           })
 
           if (error) {
+            set({ loading: false })
             return { error: error.message }
           }
 
@@ -41,14 +47,19 @@ export const useAuthStore = create<AuthState>()(
               .single()
 
             if (profileError) {
+              set({ loading: false })
               return { error: 'Erro ao carregar perfil do usuário' }
             }
 
             set({ user: profile, loading: false })
+            return { error: null }
           }
 
-          return { error: null }
+          set({ loading: false })
+          return { error: 'Erro ao fazer login' }
         } catch (error) {
+          set({ loading: false })
+          console.error('Erro no login:', error)
           return { error: 'Erro inesperado ao fazer login' }
         }
       },
@@ -67,16 +78,31 @@ export const useAuthStore = create<AuthState>()(
           })
 
           if (error) {
+            set({ loading: false })
             return { error: error.message }
           }
 
           if (data.user) {
-            // User profile will be created by the trigger
-            set({ loading: false })
+            // Aguarda um pouco para o trigger criar o perfil
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            
+            // Busca o perfil criado
+            const { data: profile } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', data.user.id)
+              .single()
+
+            if (profile) {
+              set({ user: profile, loading: false })
+            } else {
+              set({ loading: false })
+            }
           }
 
           return { error: null }
         } catch (error) {
+          set({ loading: false })
           return { error: 'Erro inesperado ao criar conta' }
         }
       },

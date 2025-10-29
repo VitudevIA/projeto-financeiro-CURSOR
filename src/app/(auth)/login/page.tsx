@@ -10,6 +10,8 @@ import { useAuthStore } from '@/lib/stores/auth-store'
 import { toast } from 'sonner'
 
 export default function LoginPage() {
+  console.log('URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+  console.log('KEY exists:', !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -20,16 +22,26 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
 
-    const { error } = await signIn(email, password)
-    
-    if (error) {
-      toast.error(error)
-    } else {
-      toast.success('Login realizado com sucesso!')
-      router.push('/dashboard')
+    try {
+      const { error } = await signIn(email, password)
+      
+      if (error) {
+        toast.error(error)
+        setLoading(false)
+      } else {
+        toast.success('Login realizado com sucesso!')
+        
+        // Aguarda um pouco para garantir que a sessão foi salva
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        // Força recarregar a página para o middleware reconhecer a sessão
+        window.location.href = '/dashboard'
+      }
+    } catch (err) {
+      console.error('Erro no login:', err)
+      toast.error('Erro ao fazer login. Tente novamente.')
+      setLoading(false)
     }
-    
-    setLoading(false)
   }
 
   return (
