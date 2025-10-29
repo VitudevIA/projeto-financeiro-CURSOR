@@ -37,25 +37,25 @@ export const useCardsStore = create<CardsState>((set, get) => ({
   },
 
   addCard: async (cardData) => {
-    try {
-      const { data, error } = await supabase
-        .from('cards')
-        .insert([cardData])
-        .select()
-        .single()
+  try {
+    const { data, error } = await supabase
+      .from('cards')
+      .insert([cardData])
+      .select()
+      .single()
 
-      if (error) {
-        return { error: error.message }
-      }
-
-      // Add to local state
-      const { cards } = get()
-      set({ cards: [data, ...cards] })
-
-      return { error: null }
-    } catch (error) {
-      return { error: 'Erro inesperado ao criar cartão' }
+    if (error) {
+      return { error: error.message }
     }
+
+    // Add to local state
+    const { cards } = get()
+    set({ cards: [data, ...cards] })
+
+    return { error: null }
+  } catch (error) {
+    return { error: 'Erro inesperado ao criar cartão' }
+  }
   },
 
   updateCard: async (id, updates) => {
