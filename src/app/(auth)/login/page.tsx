@@ -30,28 +30,22 @@ export default function LoginPage() {
         return
       }
 
-      // DEBUG - Verificar sessão após login
-      console.log('🔍 Verificando sessão após login...')
+      console.log('Verificando sessao apos login...')
       const supabase = createClient()
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
       console.log('Session data:', sessionData)
       console.log('Session error:', sessionError)
       
       if (sessionData.session) {
-        console.log('✅ Sessão criada com sucesso!')
+        console.log('Sessao criada com sucesso!')
         console.log('User ID:', sessionData.session.user.id)
         console.log('Email:', sessionData.session.user.email)
       } else {
-        console.error('❌ Nenhuma sessão encontrada após login!')
+        console.error('Nenhuma sessao encontrada apos login!')
       }
-      // FIM DEBUG
 
       toast.success('Login realizado com sucesso!')
-      
-      // Aguarda um pouco para garantir que a sessão foi salva
       await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Força recarregar a página para o middleware reconhecer a sessão
       window.location.href = '/dashboard'
     } catch (err) {
       console.error('Erro no login:', err)
@@ -133,3 +127,4 @@ export default function LoginPage() {
       </div>
     </div>
   )
+}
