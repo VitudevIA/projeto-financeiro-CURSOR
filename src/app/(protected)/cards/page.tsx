@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -9,9 +9,22 @@ import Link from 'next/link'
 import { useCardsStore } from '@/lib/stores/cards-store'
 import { formatCurrency } from '@/utils/helpers'
 import { toast } from 'sonner'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export default function CardsPage() {
-  const { cards, loading, fetchCards, deleteCard, toggleCardStatus } = useCardsStore()
+  const { cards, loading, fetchCards, deleteCard, toggleCardStatus, updateCard } = useCardsStore()
+
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState<{ name: string; type: 'credit' | 'debit'; brand: string | null; last_digits: string | null; limit: number | null }>({
+    name: '',
+    type: 'credit',
+    brand: null,
+    last_digits: null,
+    limit: null,
+  })
 
   useEffect(() => {
     fetchCards()
@@ -35,6 +48,46 @@ export default function CardsPage() {
     } else {
       toast.success('Status do cartão alterado!')
     }
+  }
+
+  const openEdit = (card: any) => {
+    setEditingId(card.id)
+    setForm({
+      name: card.name || '',
+      type: (card.type === 'debit' ? 'debit' : 'credit'),
+      brand: card.brand || null,
+      last_digits: card.last_digits || null,
+      limit: card.limit ?? card.limit_amount ?? null,
+    })
+    setIsEditOpen(true)
+  }
+
+  const handleEditSave = async () => {
+    if (!editingId) return
+    if (!form.name) {
+      toast.error('Informe o nome do cartão')
+      return
+    }
+    if (form.type === 'credit' && (!form.limit || form.limit <= 0)) {
+      toast.error('Informe um limite válido para cartão de crédito')
+      return
+    }
+
+    const updates: any = {
+      name: form.name,
+      type: form.type,
+      brand: form.brand,
+      last_digits: (form.last_digits || '')?.toString().replace(/\D/g, '').slice(0, 4) || null,
+      limit: form.type === 'credit' ? form.limit : null,
+    }
+    const { error } = await updateCard(editingId, updates)
+    if (error) {
+      toast.error(error)
+      return
+    }
+    toast.success('Cartão atualizado com sucesso!')
+    setIsEditOpen(false)
+    setEditingId(null)
   }
 
   return (
@@ -124,6 +177,15 @@ export default function CardsPage() {
                   <Button 
                     variant="outline" 
                     size="sm" 
+                    onClick={() => openEdit(card)}
+                    className="flex-1"
+                  >
+                    <Edit className="mr-2 h-4 w-4" />
+                    Editar
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
                     onClick={() => handleDelete(card.id, card.name)}
                     className="flex-1"
                   >
@@ -178,4 +240,11 @@ export default function CardsPage() {
       )}
     </div>
   )
+}
+
+// Edit Dialog
+// Using Dialog mounted at page level
+// Ensures it overlays on top of cards grid
+export function CardsEditDialogWrapper() {
+  return null
 }

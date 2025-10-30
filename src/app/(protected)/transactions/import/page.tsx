@@ -8,6 +8,7 @@ import { useCardsStore } from '@/lib/stores/cards-store'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 
@@ -37,6 +38,7 @@ export default function NewTransactionPage() {
   })
 
   const [cardId, setCardId] = useState<string>('')
+  const [showOnlyActiveCards, setShowOnlyActiveCards] = useState<boolean>(true)
   useEffect(() => { fetchCards() }, [fetchCards])
   useEffect(() => { fetchCategories() }, [fetchCategories])
 
@@ -183,6 +185,10 @@ export default function NewTransactionPage() {
                     <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                       Cartão *
                     </label>
+                    <div className="flex items-center gap-2 mb-1">
+                      <Checkbox id="onlyActive" checked={showOnlyActiveCards} onCheckedChange={(v) => setShowOnlyActiveCards(Boolean(v))} />
+                      <label htmlFor="onlyActive" className="text-xs text-muted-foreground">Mostrar apenas cartões ativos</label>
+                    </div>
                     <Select value={cardId} onValueChange={(v) => setCardId(v)}>
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione um cartão" />
@@ -190,7 +196,8 @@ export default function NewTransactionPage() {
                       <SelectContent>
                         {cards
                           .filter(card => {
-                            const t = String(card.type || '').toLowerCase()
+                            if (showOnlyActiveCards && !card.is_active) return false
+                            const t = String(card.type || '').trim().toLowerCase()
                             const isCredit = ['credit', 'crédito', 'credito'].includes(t)
                             const isDebit = ['debit', 'débito', 'debito'].includes(t)
                             return formData.paymentMethod === 'credit' ? isCredit : isDebit
