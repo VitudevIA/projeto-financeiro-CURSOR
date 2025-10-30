@@ -31,7 +31,8 @@ export default function ProtectedLayout({
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/login')
+      // Usa window.location para garantir redirect mesmo se o middleware falhar
+      window.location.href = '/login'
     }
   }, [user, loading, router])
 
@@ -49,6 +50,10 @@ export default function ProtectedLayout({
   }
 
   if (!user) {
+    // Redirect imediato sem mostrar mensagem (o middleware deveria ter feito isso)
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center text-gray-600">Redirecionando para o login...</div>
