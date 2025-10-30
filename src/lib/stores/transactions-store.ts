@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { Transaction, TransactionWithCategory } from '@/types/database.types'
+import type { Transaction } from '@/types/database.types'
 
 interface TransactionsStore {
-  transactions: TransactionWithCategory[]
+  transactions: Transaction[]
   loading: boolean
   error: string | null
   fetchTransactions: (month?: string) => Promise<void>
@@ -28,14 +28,7 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
     try {
       let query = supabase
         .from('transactions')
-        .select(`
-          *,
-          categories (
-            id,
-            name,
-            type
-          )
-        `)
+        .select('*')
 
       // Se month foi fornecido, filtra por mês
       if (month) {
@@ -45,7 +38,7 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
       const { data, error } = await query.order('transaction_date', { ascending: false })
 
       if (error) throw error
-      set({ transactions: data as TransactionWithCategory[] || [] })
+      set({ transactions: (data as Transaction[]) || [] })
     } catch (error) {
       set({ error: (error as Error).message })
     } finally {
