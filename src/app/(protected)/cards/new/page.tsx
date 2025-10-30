@@ -54,8 +54,24 @@ export default function NewCardPage() {
       return
     }
 
+    // Garante sessão válida (JWT) antes do insert
+    try {
+      const { data: s1 } = await supabase.auth.getSession()
+      if (!s1.session) {
+        await supabase.auth.refreshSession()
+      }
+      const { data: s2 } = await supabase.auth.getSession()
+      if (!s2.session) {
+        toast.error('Sessão expirada. Faça login novamente.')
+        setLoading(false)
+        return
+      }
+    } catch (e) {
+      console.warn('Falha ao verificar sessão antes do insert:', e)
+    }
+
     // Normaliza últimos 4 dígitos
-    const normalizedDigits = (formData.last_digits || '').trim().slice(-4)
+    const normalizedDigits = (formData.last_digits || '').trim().replace(/\D/g, '').slice(-4)
 
     try {
       const payload = {
@@ -78,8 +94,10 @@ export default function NewCardPage() {
         console.error('Erro do Supabase:', error)
         if (error.code === '42P01') {
           toast.error('Tabela de cartões não configurada')
+        } else if (error.code === '42501') {
+          toast.error('Permissão negada. Tente refazer login.')
         } else {
-          throw error
+          toast.error('Erro ao cadastrar cartão')
         }
         return
       }
