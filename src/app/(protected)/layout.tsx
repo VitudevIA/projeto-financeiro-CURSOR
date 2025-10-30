@@ -49,7 +49,11 @@ export default function ProtectedLayout({
   }
 
   if (!user) {
-    return null
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center text-gray-600">Redirecionando para o login...</div>
+      </div>
+    )
   }
 
   const navigation = [
