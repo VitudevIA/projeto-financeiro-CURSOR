@@ -16,11 +16,17 @@ interface Card {
   last_digits: string | null
 }
 
+// Tipo para inserção de cartão - aceita 'limit' ou 'limit_amount'
+type CardInsert = Omit<Card, 'id' | 'created_at' | 'updated_at' | 'limit_amount'> & {
+  limit?: number | null
+  limit_amount?: number | null
+}
+
 interface CardsState {
   cards: Card[]
   loading: boolean
   fetchCards: () => Promise<void>
-  addCard: (card: Omit<Card, 'id' | 'created_at' | 'updated_at'>) => Promise<{ error: string | null }>
+  addCard: (card: CardInsert) => Promise<{ error: string | null }>
   updateCard: (id: string, updates: Partial<Card>) => Promise<{ error: string | null }>
   deleteCard: (id: string) => Promise<{ error: string | null }>
   toggleCardStatus: (id: string) => Promise<{ error: string | null }>
