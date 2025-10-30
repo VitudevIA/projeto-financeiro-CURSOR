@@ -189,7 +189,12 @@ export default function NewTransactionPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {cards
-                          .filter(card => card.type === (formData.paymentMethod === 'credit' ? 'credit' : 'debit'))
+                          .filter(card => {
+                            const t = String(card.type || '').toLowerCase()
+                            const isCredit = ['credit', 'crédito', 'credito'].includes(t)
+                            const isDebit = ['debit', 'débito', 'debito'].includes(t)
+                            return formData.paymentMethod === 'credit' ? isCredit : isDebit
+                          })
                           .map(card => (
                           <SelectItem key={card.id} value={card.id}>{card.name}</SelectItem>
                         ))}
