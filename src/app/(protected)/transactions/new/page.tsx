@@ -25,7 +25,7 @@ interface TransactionFormData {
 export default function NewTransactionPage() {
   const router = useRouter()
   const { addTransaction, loading } = useTransactionsStore()
-  const { categories } = useCategoriesStore()
+  const { categories, fetchCategories } = useCategoriesStore()
   const { cards, fetchCards } = useCardsStore()
   const [formData, setFormData] = useState<TransactionFormData>({
     description: '',
@@ -42,6 +42,8 @@ export default function NewTransactionPage() {
 
   // carregar cartões
   useEffect(() => { fetchCards() }, [fetchCards])
+  // carregar categorias
+  useEffect(() => { fetchCategories() }, [fetchCategories])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -122,8 +124,8 @@ export default function NewTransactionPage() {
     }))
   }
 
-  // Filtra categorias baseadas no tipo selecionado
-  const filteredCategories = categories.filter(cat => cat.type === formData.type)
+  // Exibe todas as categorias (a tabela categories não possui coluna 'type')
+  const filteredCategories = categories
 
   return (
     <div className="container mx-auto py-6">
