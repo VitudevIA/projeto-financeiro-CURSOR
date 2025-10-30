@@ -1,166 +1,205 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useBudgetsStore } from '@/lib/stores/budgets-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
+
+interface BudgetFormData {
+  categoryId: string
+  month: string
+  limitAmount: number
+  alertPercentage: number | null
+}
 
 export default function NewBudgetPage() {
-  const [formData, setFormData] = useState({
-    categoryId: '',
-    month: new Date().toISOString().slice(0, 7) + '-01',
-    limitAmount: '',
-    alertPercentage: '80',
-  })
-  const [loading, setLoading] = useState(false)
-  
-  const { addBudget } = useBudgetsStore()
-  const { categories, fetchCategories } = useCategoriesStore()
   const router = useRouter()
+  const { addBudget, loading } = useBudgetsStore()
+  const { categories } = useCategoriesStore()
+  const [formData, setFormData] = useState<BudgetFormData>({
+    categoryId: '',
+    month: '',
+    limitAmount: 0,
+    alertPercentage: null
+  })
 
-  useEffect(() => {
-    fetchCategories()
-  }, [fetchCategories])
+  // Filtra apenas categorias de despesas para orçamentos
+  const expenseCategories = categories.filter(cat => cat.type === 'expense')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setLoading(true)
-
-    const budgetData = {
-      category_id: formData.categoryId,
-      month: formData.month,
-      limit_amount: parseFloat(formData.limitAmount),
-      alert_percentage: parseInt(formData.alertPercentage),
-      user_id: 'test-user-id'
+    
+    if (!formData.categoryId || !formData.month || formData.limitAmount <= 0) {
+      toast.error('Preencha todos os campos obrigatórios')
+      return
     }
 
-    const { error } = await addBudget(budgetData)
-    
-    if (error) {
-      toast.error(error)
-    } else {
+    try {
+      const budgetData = {
+        category_id: formData.categoryId,
+        month: formData.month,
+        limit_amount: formData.limitAmount,
+        alert_percentage: formData.alertPercentage,
+      }
+
+      await addBudget(budgetData)
+      
       toast.success('Orçamento criado com sucesso!')
       router.push('/budgets')
+    } catch (error) {
+      toast.error((error as Error).message)
+    }
+  }
+
+  const handleInputChange = (field: keyof BudgetFormData, value: string | number | null) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  // Gera opções de meses (próximos 12 meses)
+  const getMonthOptions = () => {
+    const options = []
+    const today = new Date()
+    
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(today.getFullYear(), today.getMonth() + i, 1)
+      const value = date.toISOString().split('T')[0]
+      const label = date.toLocaleDateString('pt-BR', { 
+        year: 'numeric', 
+        month: 'long' 
+      })
+      options.push({ value, label })
     }
     
-    setLoading(false)
+    return options
   }
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-  }
+  const monthOptions = getMonthOptions()
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center space-x-4">
-        <Link href="/budgets">
-          <Button variant="outline" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar
-          </Button>
-        </Link>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Novo Orçamento</h1>
-          <p className="text-gray-600">Defina um limite de gastos para uma categoria</p>
-        </div>
-      </div>
+    <div className="container mx-auto py-6">
+      <div className="max-w-2xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle>Criar Novo Orçamento</CardTitle>
+            <CardDescription>
+              Defina um limite de gastos para uma categoria específica no mês
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-4">
+                {/* Categoria */}
+                <div className="space-y-2">
+                  <label htmlFor="category" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Categoria *
+                  </label>
+                  <Select 
+                    value={formData.categoryId} 
+                    onValueChange={(value) => handleInputChange('categoryId', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {expenseCategories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Informações do Orçamento</CardTitle>
-          <CardDescription>
-            Configure o limite mensal e alertas para uma categoria
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label htmlFor="categoryId" className="block text-sm font-medium text-gray-700 mb-1">
-                  Categoria *
-                </label>
-                <Select value={formData.categoryId} onValueChange={(value) => handleInputChange('categoryId', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a categoria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        {category.icon} {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Mês */}
+                <div className="space-y-2">
+                  <label htmlFor="month" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Mês *
+                  </label>
+                  <Select 
+                    value={formData.month} 
+                    onValueChange={(value) => handleInputChange('month', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o mês" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {monthOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Valor Limite */}
+                <div className="space-y-2">
+                  <label htmlFor="limitAmount" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Valor Limite (R$) *
+                  </label>
+                  <Input
+                    id="limitAmount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0,00"
+                    value={formData.limitAmount || ''}
+                    onChange={(e) => handleInputChange('limitAmount', parseFloat(e.target.value) || 0)}
+                    required
+                  />
+                </div>
+
+                {/* Percentual de Alerta */}
+                <div className="space-y-2">
+                  <label htmlFor="alertPercentage" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Percentual de Alerta (%)
+                  </label>
+                  <Input
+                    id="alertPercentage"
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="80"
+                    value={formData.alertPercentage || ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      handleInputChange('alertPercentage', value ? parseInt(value) : null)
+                    }}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Receba um alerta quando atingir esta porcentagem do limite (opcional)
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <label htmlFor="month" className="block text-sm font-medium text-gray-700 mb-1">
-                  Mês *
-                </label>
-                <Input
-                  id="month"
-                  type="month"
-                  value={formData.month.slice(0, 7)}
-                  onChange={(e) => handleInputChange('month', e.target.value + '-01')}
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="limitAmount" className="block text-sm font-medium text-gray-700 mb-1">
-                  Limite Mensal (R$) *
-                </label>
-                <Input
-                  id="limitAmount"
-                  type="number"
-                  step="0.01"
-                  value={formData.limitAmount}
-                  onChange={(e) => handleInputChange('limitAmount', e.target.value)}
-                  placeholder="1000.00"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="alertPercentage" className="block text-sm font-medium text-gray-700 mb-1">
-                  Alerta em (%)
-                </label>
-                <Input
-                  id="alertPercentage"
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={formData.alertPercentage}
-                  onChange={(e) => handleInputChange('alertPercentage', e.target.value)}
-                  placeholder="80"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Receberá alerta quando atingir esta porcentagem do limite
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end space-x-3">
-              <Link href="/budgets">
-                <Button variant="outline" type="button">
+              <div className="flex gap-4 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push('/budgets')}
+                  disabled={loading}
+                >
                   Cancelar
                 </Button>
-              </Link>
-              <Button type="submit" disabled={loading}>
-                {loading ? 'Criando...' : 'Criar Orçamento'}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+                <Button 
+                  type="submit" 
+                  disabled={loading}
+                >
+                  {loading ? 'Criando...' : 'Criar Orçamento'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

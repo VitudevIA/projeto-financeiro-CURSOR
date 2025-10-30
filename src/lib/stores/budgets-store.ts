@@ -1,24 +1,22 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { Budget } from '@/types/database.types'
-
-// Se você precisar de dados relacionados (como nome da categoria)
-interface BudgetWithDetails extends Budget {
-  categories?: {
-    name: string
-    // outras propriedades da categoria se necessário
-  }
-}
+import type { Budget, BudgetWithCategory } from '@/types/database.types'
 
 interface BudgetsStore {
-  budgets: BudgetWithDetails[]
+  budgets: BudgetWithCategory[]
   loading: boolean
   error: string | null
   fetchBudgets: () => Promise<void>
-  addBudget: (budget: Omit<Budget, 'id' | 'created_at' | 'updated_at'>) => Promise<void>
+  addBudget: (budget: {
+    category_id: string
+    month: string
+    limit_amount: number
+    alert_percentage: number | null
+  }) => Promise<void>
   updateBudget: (id: string, updates: Partial<Budget>) => Promise<void>
   deleteBudget: (id: string) => Promise<void>
 }
+
 
 export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
   budgets: [],
@@ -33,13 +31,16 @@ export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
         .select(`
           *,
           categories (
-            name
+            id,
+            name,
+            type
           )
         `)
         .order('month', { ascending: false })
 
+      // AQUI É ONDE VOCÊ INSERE O CÓDIGO:
       if (error) throw error
-      set({ budgets: data || [] })
+      set({ budgets: data as BudgetWithCategory[] || [] })
     } catch (error) {
       set({ error: (error as Error).message })
     } finally {
@@ -47,24 +48,29 @@ export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
     }
   },
 
-  addBudget: async (budget) => {
-    try {
-      const { data, error } = await supabase
-        .from('budgets')
-        .insert([budget])
-        .select()
-        .single()
+  addBudget: async (budget: {
+  category_id: string
+  month: string
+  limit_amount: number
+  alert_percentage: number | null
+}) => {
+  try {
+    const { data, error } = await supabase
+      .from('budgets')
+      .insert([budget])
+      .select()
+      .single()
 
-      if (error) throw error
+    if (error) throw error
 
-      set((state) => ({
-        budgets: [data, ...state.budgets]
-      }))
-    } catch (error) {
-      set({ error: (error as Error).message })
-      throw error
-    }
-  },
+    set((state) => ({
+      budgets: [data, ...state.budgets]
+    }))
+  } catch (error) {
+    set({ error: (error as Error).message })
+    throw error
+  }
+},
 
   updateBudget: async (id, updates) => {
     try {
