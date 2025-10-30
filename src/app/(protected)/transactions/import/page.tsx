@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
@@ -37,7 +37,6 @@ export default function NewTransactionPage() {
   })
 
   const [cardId, setCardId] = useState<string>('')
-  import { useEffect } from 'react'
   useEffect(() => { fetchCards() }, [fetchCards])
 
   const handleSubmit = async (e: React.FormEvent) => {
