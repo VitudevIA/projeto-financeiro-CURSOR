@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { User } from '@supabase/supabase-js'
+import type { AppUser } from '@/types/user_types' // ✅ MUDE A IMPORT
 
 // Defina os tipos localmente
 interface DashboardKPIs {
@@ -31,7 +31,7 @@ interface DashboardState {
   topTransactions: any[]
   loading: boolean
   error: string | null
-  fetchDashboardData: (user: User | null, startDate?: string, endDate?: string) => Promise<void>
+  fetchDashboardData: (user: AppUser | null, startDate?: string, endDate?: string) => Promise<void> // ✅ MUDE O TIPO
   clearError: () => void
 }
 

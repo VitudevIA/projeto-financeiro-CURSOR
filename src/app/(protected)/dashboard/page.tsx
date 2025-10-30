@@ -36,7 +36,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
   if (user) {
-    fetchDashboardData(user) // ✅ Agora passa o user como parâmetro
+    fetchDashboardData(user) // ✅ AGORA SEM 'as any'
   }
 }, [fetchDashboardData, user])
 
