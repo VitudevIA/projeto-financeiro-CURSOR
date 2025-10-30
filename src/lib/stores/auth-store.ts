@@ -283,7 +283,6 @@ export const useAuthStore = create<AuthState>()(
           return { error: 'Erro ao sincronizar dados' }
         }
       },
-      }
     }),
     {
       name: 'auth-storage',
