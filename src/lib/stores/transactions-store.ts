@@ -45,10 +45,10 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
       if (filters?.endDate) {
         query = query.lte('transaction_date', filters.endDate)
       }
-      if (filters?.categoryId) {
+      if (filters?.categoryId && filters.categoryId !== 'all') {
         query = query.eq('category_id', filters.categoryId)
       }
-      if (filters?.cardId) {
+      if (filters?.cardId && filters.cardId !== 'all') {
         query = query.eq('card_id', filters.cardId)
       }
       if (filters?.paymentMethod && filters.paymentMethod !== 'all') {
