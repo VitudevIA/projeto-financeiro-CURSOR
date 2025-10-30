@@ -1,6 +1,19 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { Card } from '@/types/database.types'
+
+// Interface correta baseada na estrutura real da tabela cards
+interface Card {
+  id: string
+  user_id: string
+  limit: number | null          // ✅ CORRETO: 'limit' (não 'limit_amount')
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  name: string
+  type: string
+  brand: string | null
+  last_digits: string | null
+}
 
 interface CardsState {
   cards: Card[]
@@ -37,25 +50,25 @@ export const useCardsStore = create<CardsState>((set, get) => ({
   },
 
   addCard: async (cardData) => {
-  try {
-    const { data, error } = await supabase
-      .from('cards')
-      .insert([cardData])
-      .select()
-      .single()
+    try {
+      const { data, error } = await supabase
+        .from('cards')
+        .insert([cardData])
+        .select()
+        .single()
 
-    if (error) {
-      return { error: error.message }
+      if (error) {
+        return { error: error.message }
+      }
+
+      // Add to local state
+      const { cards } = get()
+      set({ cards: [data, ...cards] })
+
+      return { error: null }
+    } catch (error) {
+      return { error: 'Erro inesperado ao criar cartão' }
     }
-
-    // Add to local state
-    const { cards } = get()
-    set({ cards: [data, ...cards] })
-
-    return { error: null }
-  } catch (error) {
-    return { error: 'Erro inesperado ao criar cartão' }
-  }
   },
 
   updateCard: async (id, updates) => {

@@ -43,7 +43,7 @@ export default function NewCardPage() {
         type: formData.type,
         brand: formData.brand || null,
         last_digits: formData.lastDigits || null,
-        limit_amount: formData.limitAmount ? parseFloat(formData.limitAmount) : null,
+        limit: formData.limitAmount ? parseFloat(formData.limitAmount) : null,
         is_active: true,
         user_id: user.id // ✅ AGORA COM UUID VÁLIDO
       }

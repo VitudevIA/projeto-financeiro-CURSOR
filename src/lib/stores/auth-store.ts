@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { createClient } from '@/lib/supabase/client'
-import type { AppUser } from '@/types/user_types'
+import type { AppUser } from '../../types/user_types'
 
 // Interface para user_preferences
 interface UserPreferences {
   user_id: string
-  dashboard_data: any
-  updated_at: string
+  dashboard_data: any // jsonb
+  updated_at: string | null
 }
 
 interface AuthState {
@@ -216,7 +216,7 @@ export const useAuthStore = create<AuthState>()(
           if (!error && remoteData) {
             const localParsed = localDashboardData ? JSON.parse(localDashboardData) : null
             
-            if (!localParsed || new Date(remoteData.updated_at) > new Date(localParsed.state?.updated_at || 0)) {
+            if (!localParsed || !remoteData.updated_at || new Date(remoteData.updated_at) > new Date(localParsed.state?.updated_at || 0)) {
               if (remoteData.dashboard_data) {
                 localStorage.setItem('dashboard-storage', JSON.stringify({
                   ...localParsed,

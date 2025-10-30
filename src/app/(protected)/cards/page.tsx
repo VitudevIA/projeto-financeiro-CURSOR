@@ -93,11 +93,11 @@ export default function CardsPage() {
                       {card.type === 'credit' ? 'Crédito' : 'Débito'}
                     </span>
                   </div>
-                  {card.limit_amount && (
+                  {card.limit && (
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-600">Limite:</span>
                       <span className="text-sm font-medium">
-                        {formatCurrency(card.limit_amount)}
+                        {formatCurrency(card.limit)}
                       </span>
                     </div>
                   )}
