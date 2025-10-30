@@ -26,9 +26,12 @@ const supabase = createClient()
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
-      user: null,
-      loading: true,
+    (set, get) => {
+      // Estado inicial - começa como null para evitar conflitos
+      // O middleware e checkAuth vão atualizar isso
+      return {
+        user: null,
+        loading: false,
 
       signIn: async (email: string, password: string) => {
         try {
@@ -119,9 +122,19 @@ export const useAuthStore = create<AuthState>()(
       signOut: async () => {
         try {
           await supabase.auth.signOut()
+          // Limpa completamente o estado
           set({ user: null, loading: false })
+          // Limpa o localStorage para evitar persistência de dados inválidos
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth-storage')
+          }
         } catch (error) {
           console.error('Erro ao fazer logout:', error)
+          // Mesmo com erro, limpa o estado local
+          set({ user: null, loading: false })
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth-storage')
+          }
         }
       },
 
@@ -166,8 +179,20 @@ export const useAuthStore = create<AuthState>()(
 
       checkAuth: async () => {
         try {
+          const currentState = get()
+          // Evita múltiplas chamadas simultâneas
+          if (currentState.loading) {
+            return
+          }
+          
           set({ loading: true })
-          const { data: { session } } = await supabase.auth.getSession()
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+
+          if (sessionError) {
+            console.error('Erro ao obter sessão:', sessionError)
+            set({ user: null, loading: false })
+            return
+          }
 
           if (session?.user) {
             const { data: profile, error } = await supabase
@@ -184,11 +209,13 @@ export const useAuthStore = create<AuthState>()(
 
             if (profile) {
               set({ user: profile as AppUser, loading: false })
-              await get().syncUserData()
+              // Sync não bloqueia
+              get().syncUserData().catch(console.error)
             } else {
               set({ user: null, loading: false })
             }
           } else {
+            // Não há sessão, limpa o estado
             set({ user: null, loading: false })
           }
         } catch (error) {
@@ -256,10 +283,22 @@ export const useAuthStore = create<AuthState>()(
           return { error: 'Erro ao sincronizar dados' }
         }
       },
+      }
     }),
     {
       name: 'auth-storage',
-      partialize: (state) => ({ user: state.user }),
+      // Só persiste o user, não o loading (evita loops)
+      partialize: (state) => ({ 
+        user: state.user 
+      }),
+      // Limpa o estado após hidratação se não houver usuário válido
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          // Sempre inicia com loading false após hidratação
+          state.loading = false
+          // O checkAuth será chamado depois para verificar se há sessão válida
+        }
+      },
     }
   )
 )

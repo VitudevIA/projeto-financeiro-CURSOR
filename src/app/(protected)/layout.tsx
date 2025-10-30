@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/stores/auth-store'
+import { useAuthInit } from '@/hooks/useAuthInit'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import Link from 'next/link'
@@ -22,49 +23,26 @@ export default function ProtectedLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { user, loading, signOut, checkAuth } = useAuthStore()
+  const { user, loading, signOut } = useAuthStore()
   const router = useRouter()
-  const hasCheckedAuth = useRef(false)
-  const redirectAttempted = useRef(false)
+  const [isMounted, setIsMounted] = useState(false)
+  
+  // Inicializa autenticação de forma segura (apenas uma vez)
+  useAuthInit()
 
-  // Verifica autenticação apenas uma vez ao montar
-  useEffect(() => {
-    if (!hasCheckedAuth.current) {
-      hasCheckedAuth.current = true
-      checkAuth()
-    }
-  }, [checkAuth])
-
-  // Redireciona apenas uma vez se não houver usuário após verificar
-  useEffect(() => {
-    // Só tenta redirecionar se já verificou autenticação e não há usuário
-    if (hasCheckedAuth.current && !loading && !user && !redirectAttempted.current) {
-      redirectAttempted.current = true
-      
-      // Pequeno delay para não interferir com o middleware do Next.js
-      // Se o middleware redirecionou, este código não será executado
-      setTimeout(() => {
-        const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
-        const isProtectedRoute = currentPath.startsWith('/dashboard') || 
-                                 currentPath.startsWith('/transactions') ||
-                                 currentPath.startsWith('/cards') ||
-                                 currentPath.startsWith('/budgets') ||
-                                 currentPath.startsWith('/settings')
-        
-        // Só redireciona se ainda estiver em rota protegida (middleware não funcionou)
-        if (isProtectedRoute && typeof window !== 'undefined') {
-          window.location.replace('/login')
-        }
-      }, 50)
-    }
-  }, [user, loading])
+  // Marca como montado após primeiro render (evita hydration mismatch)
+  if (typeof window !== 'undefined' && !isMounted) {
+    setIsMounted(true)
+  }
 
   const handleSignOut = async () => {
     await signOut()
     router.push('/login')
   }
 
-  if (loading) {
+  // Durante loading inicial, mostra loading
+  // O middleware do Next.js já deve ter verificado e redirecionado se necessário
+  if (!isMounted || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
@@ -72,10 +50,15 @@ export default function ProtectedLayout({
     )
   }
 
+  // Se após o loading não houver usuário, o middleware já deveria ter redirecionado
+  // Mas por segurança, mostra mensagem (não faz redirect aqui para evitar loops)
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center text-gray-600">Redirecionando para o login...</div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="text-gray-600">Redirecionando para o login...</div>
+        </div>
       </div>
     )
   }
