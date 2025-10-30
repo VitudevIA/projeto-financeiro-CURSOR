@@ -15,6 +15,7 @@ export interface PDFReportData {
     amount: number
     category: string
     type: string
+    payment_method?: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
   }>
   categoryData: Array<{
     name: string
@@ -168,14 +169,15 @@ export class PDFExporter {
     this.doc.setFontSize(10)
     this.doc.setFont('helvetica', 'bold')
     
-    const colWidths = [25, 60, 30, 25, 20]
-    const colPositions = [this.margin, this.margin + 25, this.margin + 85, this.margin + 115, this.margin + 140]
+    const colWidths = [22, 55, 28, 23, 22, 20]
+    const colPositions = [this.margin, this.margin + 22, this.margin + 77, this.margin + 105, this.margin + 128, this.margin + 150]
     
     this.doc.text('Data', colPositions[0], this.currentY)
     this.doc.text('Descrição', colPositions[1], this.currentY)
     this.doc.text('Valor', colPositions[2], this.currentY)
     this.doc.text('Categoria', colPositions[3], this.currentY)
     this.doc.text('Tipo', colPositions[4], this.currentY)
+    this.doc.text('Método', colPositions[5], this.currentY)
     
     this.currentY += 5
     this.addLine()
@@ -195,6 +197,7 @@ export class PDFExporter {
       this.doc.text(`R$ ${transaction.amount.toFixed(2)}`, colPositions[2], this.currentY)
       this.doc.text(transaction.category.substring(0, 10), colPositions[3], this.currentY)
       this.doc.text(transaction.type, colPositions[4], this.currentY)
+      this.doc.text((transaction.payment_method || '').toString(), colPositions[5], this.currentY)
       
       this.currentY += 6
     }

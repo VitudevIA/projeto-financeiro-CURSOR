@@ -196,6 +196,7 @@ export type Database = {
           is_recurring: boolean | null
           notes: string | null
           recurring_type: string | null
+          payment_method: string
           transaction_date: string
           type: string
           updated_at: string | null
@@ -211,6 +212,7 @@ export type Database = {
           is_recurring?: boolean | null
           notes?: string | null
           recurring_type?: string | null
+          payment_method?: string
           transaction_date: string
           type: string
           updated_at?: string | null
@@ -226,6 +228,7 @@ export type Database = {
           is_recurring?: boolean | null
           notes?: string | null
           recurring_type?: string | null
+          payment_method?: string
           transaction_date?: string
           type?: string
           updated_at?: string | null

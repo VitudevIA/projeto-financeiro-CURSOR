@@ -2,11 +2,20 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import type { Transaction } from '@/types/database.types'
 
+type PaymentMethod = 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
+
 interface TransactionsStore {
   transactions: Transaction[]
   loading: boolean
   error: string | null
-  fetchTransactions: (month?: string) => Promise<void>
+  fetchTransactions: (filters?: {
+    startDate?: string
+    endDate?: string
+    categoryId?: string
+    cardId?: string
+    paymentMethod?: PaymentMethod | 'all'
+    search?: string
+  }) => Promise<void>
   addTransaction: (transaction: {
     description: string
     amount: number
@@ -23,16 +32,30 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
   loading: false,
   error: null,
 
-  fetchTransactions: async (month?: string) => {
+  fetchTransactions: async (filters) => {
     set({ loading: true, error: null })
     try {
       let query = supabase
         .from('transactions')
         .select('*')
 
-      // Se month foi fornecido, filtra por mês
-      if (month) {
-        query = query.gte('transaction_date', month).lt('transaction_date', getNextMonth(month))
+      if (filters?.startDate) {
+        query = query.gte('transaction_date', filters.startDate)
+      }
+      if (filters?.endDate) {
+        query = query.lte('transaction_date', filters.endDate)
+      }
+      if (filters?.categoryId) {
+        query = query.eq('category_id', filters.categoryId)
+      }
+      if (filters?.cardId) {
+        query = query.eq('card_id', filters.cardId)
+      }
+      if (filters?.paymentMethod && filters.paymentMethod !== 'all') {
+        query = query.eq('payment_method', filters.paymentMethod)
+      }
+      if (filters?.search) {
+        query = query.ilike('description', `%${filters.search}%`)
       }
 
       const { data, error } = await query.order('transaction_date', { ascending: false })

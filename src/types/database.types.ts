@@ -26,6 +26,7 @@ export interface Transaction {
   description: string
   transaction_date: string
   type: 'income' | 'expense'
+  payment_method: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
   created_at: string
   updated_at: string | null
 }

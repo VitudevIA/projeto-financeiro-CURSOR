@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
+import { useCardsStore } from '@/lib/stores/cards-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,14 +15,28 @@ import { toast } from 'sonner'
 export default function TransactionsPage() {
   const { transactions, loading, error, fetchTransactions, deleteTransaction } = useTransactionsStore()
   const { categories } = useCategoriesStore()
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const today = new Date()
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+  const { cards, fetchCards } = useCardsStore()
+
+  const [filters, setFilters] = useState({
+    startDate: '',
+    endDate: '',
+    categoryId: '',
+    cardId: '',
+    paymentMethod: 'all' as 'all' | 'credit' | 'debit' | 'cash' | 'pix' | 'boleto',
+    search: ''
   })
 
   useEffect(() => {
-    fetchTransactions(selectedMonth)
-  }, [fetchTransactions, selectedMonth])
+    fetchCards()
+  }, [fetchCards])
+
+  useEffect(() => {
+    fetchTransactions(filters)
+  }, [])
+
+  const applyFilters = () => {
+    fetchTransactions(filters)
+  }
 
   const handleDelete = async (id: string, description: string) => {
     if (!confirm(`Tem certeza que deseja excluir a transação "${description}"?`)) return
@@ -87,24 +102,67 @@ export default function TransactionsPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-3xl font-bold">Transações</h1>
-          <p className="text-muted-foreground">
-            Gerencie suas entradas e saídas financeiras
-          </p>
+          <p className="text-muted-foreground">Gerencie suas entradas e saídas financeiras</p>
         </div>
         <div className="flex gap-2">
-          <Link href="/transactions/import">
-            <Button variant="outline">
-              <Download className="w-4 h-4 mr-2" />
-              Importar
-            </Button>
-          </Link>
-          <Link href="/transactions/new">
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Transação
-            </Button>
-          </Link>
+          <Link href="/transactions/import"><Button variant="outline"><Download className="w-4 h-4 mr-2" />Importar</Button></Link>
+          <Link href="/transactions/new"><Button><Plus className="w-4 h-4 mr-2" />Nova Transação</Button></Link>
         </div>
+      </div>
+
+      {/* Barra de filtros */}
+      <div className="bg-white rounded-lg shadow-sm border p-4 mb-6 grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div>
+          <label className="text-sm">Data Início</label>
+          <Input type="date" value={filters.startDate} onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))} />
+        </div>
+        <div>
+          <label className="text-sm">Data Fim</label>
+          <Input type="date" value={filters.endDate} onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))} />
+        </div>
+        <div>
+          <label className="text-sm">Categoria</label>
+          <Select value={filters.categoryId} onValueChange={(v) => setFilters(f => ({ ...f, categoryId: v }))}>
+            <SelectTrigger><SelectValue placeholder="Todas as categorias" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Todas as categorias</SelectItem>
+              {categories.map(cat => (
+                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-sm">Cartão</label>
+          <Select value={filters.cardId} onValueChange={(v) => setFilters(f => ({ ...f, cardId: v }))}>
+            <SelectTrigger><SelectValue placeholder="Todos os cartões" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Todos os cartões</SelectItem>
+              {cards.map(card => (
+                <SelectItem key={card.id} value={card.id}>{card.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-sm">Tipo</label>
+          <Select value={filters.paymentMethod} onValueChange={(v: any) => setFilters(f => ({ ...f, paymentMethod: v }))}>
+            <SelectTrigger><SelectValue placeholder="Todos os tipos" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os tipos</SelectItem>
+              <SelectItem value="credit">Crédito</SelectItem>
+              <SelectItem value="debit">Débito</SelectItem>
+              <SelectItem value="cash">Dinheiro</SelectItem>
+              <SelectItem value="pix">PIX</SelectItem>
+              <SelectItem value="boleto">Boleto</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-sm">Buscar</label>
+          <Input placeholder="Descrição..." value={filters.search} onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))} />
+        </div>
+        <div className="md:col-span-6 flex justify-end"><Button onClick={applyFilters}>Aplicar Filtros</Button></div>
       </div>
 
       {/* Cards de Resumo */}

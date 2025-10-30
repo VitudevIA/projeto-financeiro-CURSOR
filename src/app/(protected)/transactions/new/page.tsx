@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
+import { useCardsStore } from '@/lib/stores/cards-store'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -18,12 +19,14 @@ interface TransactionFormData {
   transactionDate: string
   installments: number
   expenseNature?: string
+  paymentMethod: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
 }
 
 export default function NewTransactionPage() {
   const router = useRouter()
   const { addTransaction, loading } = useTransactionsStore()
   const { categories } = useCategoriesStore()
+  const { cards, fetchCards } = useCardsStore()
   const [formData, setFormData] = useState<TransactionFormData>({
     description: '',
     amount: 0,
@@ -31,14 +34,26 @@ export default function NewTransactionPage() {
     categoryId: '',
     transactionDate: new Date().toISOString().split('T')[0],
     installments: 1,
-    expenseNature: ''
+    expenseNature: '',
+    paymentMethod: 'cash'
   })
+
+  const [cardId, setCardId] = useState<string>('')
+
+  // carregar cartões
+  import { useEffect } from 'react'
+  useEffect(() => { fetchCards() }, [fetchCards])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!formData.description || !formData.categoryId || formData.amount <= 0) {
       toast.error('Preencha todos os campos obrigatórios')
+      return
+    }
+
+    if ((formData.paymentMethod === 'credit' || formData.paymentMethod === 'debit') && !cardId) {
+      toast.error('Selecione um cartão para pagamentos de Crédito/Débito')
       return
     }
 
@@ -62,7 +77,9 @@ export default function NewTransactionPage() {
             transaction_date: installmentDate.toISOString().split('T')[0],
             expense_nature: formData.expenseNature,
             installment_number: i + 1,
-            total_installments: installmentCount
+            total_installments: installmentCount,
+            payment_method: formData.paymentMethod,
+            card_id: (formData.paymentMethod === 'credit' || formData.paymentMethod === 'debit') ? cardId : null
           }
 
           try {
@@ -84,7 +101,9 @@ export default function NewTransactionPage() {
           transaction_date: formData.transactionDate,
           expense_nature: formData.expenseNature,
           installment_number: null,
-          total_installments: null
+          total_installments: null,
+          payment_method: formData.paymentMethod,
+          card_id: (formData.paymentMethod === 'credit' || formData.paymentMethod === 'debit') ? cardId : null
         }
 
         await addTransaction(transactionData as any)
@@ -138,6 +157,61 @@ export default function NewTransactionPage() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* Método de pagamento */}
+                <div className="space-y-2">
+                  <label htmlFor="paymentMethod" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Método de Pagamento *
+                  </label>
+                  <Select 
+                    value={formData.paymentMethod}
+                    onValueChange={(value: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto') => {
+                      handleInputChange('paymentMethod', value)
+                      // Resetar/validar cartão conforme método
+                      if (value !== 'credit' && value !== 'debit') {
+                        setCardId('')
+                      } else {
+                        const methodType = value
+                        const current = cards.find(c => c.id === cardId)
+                        if (current && current.type !== methodType) {
+                          setCardId('')
+                        }
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o método" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="credit">Crédito</SelectItem>
+                      <SelectItem value="debit">Débito</SelectItem>
+                      <SelectItem value="cash">Dinheiro</SelectItem>
+                      <SelectItem value="pix">PIX</SelectItem>
+                      <SelectItem value="boleto">Boleto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Cartão - obrigatório para Crédito/Débito */}
+                {(formData.paymentMethod === 'credit' || formData.paymentMethod === 'debit') && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                      Cartão *
+                    </label>
+                    <Select value={cardId} onValueChange={(v) => setCardId(v)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um cartão" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cards
+                          .filter(card => card.type === (formData.paymentMethod === 'credit' ? 'credit' : 'debit'))
+                          .map(card => (
+                          <SelectItem key={card.id} value={card.id}>{card.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 {/* Descrição */}
                 <div className="space-y-2">

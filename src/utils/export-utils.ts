@@ -8,6 +8,7 @@ export interface ExportTransaction {
   type: string
   category: string
   card?: string
+  payment_method?: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
   notes?: string
 }
 
@@ -24,6 +25,7 @@ export function exportToCSV(transactions: ExportTransaction[], filename: string 
     'Tipo',
     'Categoria',
     'Cartão',
+    'Método',
     'Observações'
   ]
 
@@ -35,6 +37,7 @@ export function exportToCSV(transactions: ExportTransaction[], filename: string 
     transaction.type,
     transaction.category,
     transaction.card || '',
+    transaction.payment_method || '',
     transaction.notes || ''
   ])
 
