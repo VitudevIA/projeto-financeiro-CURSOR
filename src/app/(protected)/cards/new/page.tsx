@@ -8,26 +8,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
+import Link from 'next/link'
+import { ChevronLeft } from 'lucide-react'
 import { useAuthStore } from '@/lib/stores/auth-store'
 
 interface CardFormData {
   name: string
   type: 'credit' | 'debit'
+  brand: string
+  last_digits: string
   limit: number
-  closing_day: number
-  due_day: number
 }
 
 export default function NewCardPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const { user } = useAuthStore() // busca usuário do store global
+  const { user } = useAuthStore()
   const [formData, setFormData] = useState<CardFormData>({
     name: '',
     type: 'credit',
+    brand: '',
+    last_digits: '',
     limit: 0,
-    closing_day: 1,
-    due_day: 10
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,16 +42,37 @@ export default function NewCardPage() {
       return
     }
 
-    if (!formData.name || (formData.type === 'credit' && formData.limit <= 0)) {
-      toast.error('Preencha todos os campos obrigatórios')
+    if (!formData.name) {
+      toast.error('Informe o nome do cartão')
       setLoading(false)
       return
     }
 
+    if (formData.type === 'credit' && (!formData.limit || formData.limit <= 0)) {
+      toast.error('Informe um limite válido para cartão de crédito')
+      setLoading(false)
+      return
+    }
+
+    // Normaliza últimos 4 dígitos
+    const normalizedDigits = (formData.last_digits || '').trim().slice(-4)
+
     try {
+      const payload = {
+        name: formData.name,
+        type: formData.type,
+        brand: formData.brand || null,
+        last_digits: normalizedDigits || null,
+        limit: formData.type === 'credit' ? formData.limit : null,
+        user_id: user.id,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
       const { error } = await supabase
         .from('cards')
-        .insert([{ ...formData, user_id: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }])
+        .insert([payload])
 
       if (error) {
         console.error('Erro do Supabase:', error)
@@ -80,120 +103,99 @@ export default function NewCardPage() {
 
   return (
     <div className="container mx-auto py-6">
-      <div className="max-w-2xl mx-auto">
-        <Card>
-          <CardHeader>
-            <CardTitle>Cadastrar Novo Cartão</CardTitle>
-            <CardDescription>
-              Adicione um cartão de crédito ou débito para controle
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label htmlFor="name" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Nome do Cartão *
-                  </label>
-                  <Input
-                    id="name"
-                    placeholder="Ex: Nubank, Itaú..."
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    required
-                  />
-                </div>
+      {/* Header simples com botão Voltar e título */}
+      <div className="flex items-center gap-3 mb-6">
+        <Link href="/cards" className="inline-flex items-center text-sm text-gray-700 hover:text-gray-900">
+          <ChevronLeft className="h-5 w-5 mr-1" />
+          Voltar
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Novo Cartão</h1>
+          <p className="text-gray-600">Adicione um novo cartão de crédito ou débito</p>
+        </div>
+      </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="type" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Tipo do Cartão *
-                  </label>
-                  <Select 
-                    value={formData.type} 
-                    onValueChange={(value: 'credit' | 'debit') => handleInputChange('type', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="credit">Cartão de Crédito</SelectItem>
-                      <SelectItem value="debit">Cartão de Débito</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+      <div className="bg-white rounded-lg shadow-sm border p-6">
+        <h2 className="text-lg font-semibold text-gray-900">Informações do Cartão</h2>
+        <p className="text-sm text-gray-600 mb-6">Preencha os dados do seu cartão para organizar suas transações</p>
 
-                {formData.type === 'credit' && (
-                  <>
-                    <div className="space-y-2">
-                      <label htmlFor="limit" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                        Limite do Cartão (R$) *
-                      </label>
-                      <Input
-                        id="limit"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        placeholder="0,00"
-                        value={formData.limit || ''}
-                        onChange={(e) => handleInputChange('limit', parseFloat(e.target.value) || 0)}
-                        required
-                      />
-                    </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="md:col-span-1">
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700">Nome do Cartão *</label>
+              <Input
+                id="name"
+                placeholder="Ex: Nubank Crédito"
+                value={formData.name}
+                onChange={(e) => handleInputChange('name', e.target.value)}
+                required
+                className="mt-1"
+              />
+            </div>
 
-                    <div className="space-y-2">
-                      <label htmlFor="closing_day" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                        Dia de Fechamento *
-                      </label>
-                      <Input
-                        id="closing_day"
-                        type="number"
-                        min="1"
-                        max="31"
-                        placeholder="1"
-                        value={formData.closing_day}
-                        onChange={(e) => handleInputChange('closing_day', parseInt(e.target.value) || 1)}
-                        required
-                      />
-                    </div>
+            <div className="md:col-span-1">
+              <label className="block text-sm font-medium text-gray-700">Tipo *</label>
+              <Select
+                value={formData.type}
+                onValueChange={(value: 'credit' | 'debit') => handleInputChange('type', value)}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="credit">Crédito</SelectItem>
+                  <SelectItem value="debit">Débito</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-                    <div className="space-y-2">
-                      <label htmlFor="due_day" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                        Dia de Vencimento *
-                      </label>
-                      <Input
-                        id="due_day"
-                        type="number"
-                        min="1"
-                        max="31"
-                        placeholder="10"
-                        value={formData.due_day}
-                        onChange={(e) => handleInputChange('due_day', parseInt(e.target.value) || 10)}
-                        required
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
+            <div className="md:col-span-1">
+              <label htmlFor="brand" className="block text-sm font-medium text-gray-700">Bandeira</label>
+              <Input
+                id="brand"
+                placeholder="Ex: Visa, Mastercard"
+                value={formData.brand}
+                onChange={(e) => handleInputChange('brand', e.target.value)}
+                className="mt-1"
+              />
+            </div>
 
-              <div className="flex gap-4 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.push('/cards')}
-                  disabled={loading}
-                >
-                  Cancelar
-                </Button>
-                <Button 
-                  type="submit" 
-                  disabled={loading}
-                >
-                  {loading ? 'Cadastrando...' : 'Cadastrar Cartão'}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+            <div className="md:col-span-1">
+              <label htmlFor="last_digits" className="block text-sm font-medium text-gray-700">Últimos 4 dígitos</label>
+              <Input
+                id="last_digits"
+                placeholder="1234"
+                value={formData.last_digits}
+                onChange={(e) => handleInputChange('last_digits', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                className="mt-1"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="limit" className="block text-sm font-medium text-gray-700">Limite do Cartão (R$)</label>
+            <Input
+              id="limit"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="5000.00"
+              value={formData.type === 'credit' ? (formData.limit || '') : ''}
+              onChange={(e) => handleInputChange('limit', parseFloat(e.target.value) || 0)}
+              className="mt-1"
+              disabled={formData.type !== 'credit'}
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => router.push('/cards')} disabled={loading}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Salvando...' : 'Salvar Cartão'}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   )
