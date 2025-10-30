@@ -6,7 +6,7 @@ interface BudgetsStore {
   budgets: BudgetWithCategory[]
   loading: boolean
   error: string | null
-  fetchBudgets: () => Promise<void>
+  fetchBudgets: (month?: string) => Promise<void>
   addBudget: (budget: {
     category_id: string
     month: string
@@ -17,16 +17,15 @@ interface BudgetsStore {
   deleteBudget: (id: string) => Promise<void>
 }
 
-
 export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
   budgets: [],
   loading: false,
   error: null,
 
-  fetchBudgets: async () => {
+  fetchBudgets: async (month?: string) => {
     set({ loading: true, error: null })
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('budgets')
         .select(`
           *,
@@ -36,9 +35,14 @@ export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
             type
           )
         `)
-        .order('month', { ascending: false })
 
-      // AQUI É ONDE VOCÊ INSERE O CÓDIGO:
+      // Se month foi fornecido, filtra por mês
+      if (month) {
+        query = query.gte('month', month).lt('month', getNextMonth(month))
+      }
+
+      const { data, error } = await query.order('month', { ascending: false })
+
       if (error) throw error
       set({ budgets: data as BudgetWithCategory[] || [] })
     } catch (error) {
@@ -49,30 +53,30 @@ export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
   },
 
   addBudget: async (budget: {
-  category_id: string
-  month: string
-  limit_amount: number
-  alert_percentage: number | null
-}) => {
-  try {
-    const { data, error } = await supabase
-      .from('budgets')
-      .insert([budget])
-      .select()
-      .single()
+    category_id: string
+    month: string
+    limit_amount: number
+    alert_percentage: number | null
+  }) => {
+    try {
+      const { data, error } = await supabase
+        .from('budgets')
+        .insert([budget])
+        .select()
+        .single()
 
-    if (error) throw error
+      if (error) throw error
 
-    set((state) => ({
-      budgets: [data, ...state.budgets]
-    }))
-  } catch (error) {
-    set({ error: (error as Error).message })
-    throw error
-  }
-},
+      set((state) => ({
+        budgets: [data, ...state.budgets]
+      }))
+    } catch (error) {
+      set({ error: (error as Error).message })
+      throw error
+    }
+  },
 
-  updateBudget: async (id, updates) => {
+  updateBudget: async (id: string, updates: Partial<Budget>) => {
     try {
       const { data, error } = await supabase
         .from('budgets')
@@ -92,7 +96,7 @@ export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
     }
   },
 
-  deleteBudget: async (id) => {
+  deleteBudget: async (id: string) => {
     try {
       const { error } = await supabase
         .from('budgets')
@@ -110,3 +114,10 @@ export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
     }
   }
 }))
+
+// Função auxiliar para calcular o próximo mês
+function getNextMonth(month: string): string {
+  const date = new Date(month)
+  date.setMonth(date.getMonth() + 1)
+  return date.toISOString().split('T')[0]
+}

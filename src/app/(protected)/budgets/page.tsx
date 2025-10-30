@@ -1,206 +1,221 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { useBudgetsStore } from '@/lib/stores/budgets-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
-import { formatCurrency } from '@/utils/helpers'
-import { Plus, Target, AlertTriangle, Edit, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
+import { Plus, Trash2, Edit } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 
 export default function BudgetsPage() {
-  const { budgets, loading, fetchBudgets, deleteBudget } = useBudgetsStore()
-  const { categories, fetchCategories } = useCategoriesStore()
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
+  const { budgets, loading, error, fetchBudgets, deleteBudget } = useBudgetsStore()
+  const { categories, fetchCategories } = useCategoriesStore() // ← Adicione fetchCategories aqui
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const today = new Date()
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  })
 
   useEffect(() => {
     fetchBudgets(selectedMonth + '-01')
     fetchCategories()
   }, [fetchBudgets, fetchCategories, selectedMonth])
 
-  const handleDelete = async (id: string, categoryName: string) => {
-    if (window.confirm(`Tem certeza que deseja excluir o orçamento de "${categoryName}"?`)) {
-      const { error } = await deleteBudget(id)
-      if (error) {
-        toast.error(error)
-      } else {
-        toast.success('Orçamento excluído com sucesso!')
-      }
+  const handleDeleteBudget = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir este orçamento?')) return
+
+    try {
+      await deleteBudget(id)
+      toast.success('Orçamento excluído com sucesso!')
+    } catch (error) {
+      toast.error('Erro ao excluir orçamento')
     }
   }
 
-  const getBudgetStatus = (budget: any) => {
-    if (budget.status === 'exceeded') return { status: 'exceeded', color: 'text-red-600', bgColor: 'bg-red-50', borderColor: 'border-red-500' }
-    if (budget.status === 'warning') return { status: 'warning', color: 'text-yellow-600', bgColor: 'bg-yellow-50', borderColor: 'border-yellow-500' }
-    return { status: 'ok', color: 'text-green-600', bgColor: 'bg-green-50', borderColor: 'border-green-500' }
+  const getCategoryName = (categoryId: string) => {
+    const category = categories.find(cat => cat.id === categoryId)
+    return category?.name || 'Categoria não encontrada'
+  }
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value)
+  }
+
+  const formatMonth = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('pt-BR', {
+      year: 'numeric',
+      month: 'long'
+    })
+  }
+
+  // Gera opções de meses (últimos 12 meses)
+  const getMonthOptions = () => {
+    const options = []
+    const today = new Date()
+    
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const label = date.toLocaleDateString('pt-BR', { 
+        year: 'numeric', 
+        month: 'long' 
+      })
+      options.push({ value, label })
+    }
+    
+    return options
+  }
+
+  const monthOptions = getMonthOptions()
+
+  if (loading) {
+    return (
+      <div className="container mx-auto py-6">
+        <div className="flex items-center justify-center">
+          <div className="text-lg">Carregando orçamentos...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto py-6">
+        <div className="flex items-center justify-center">
+          <div className="text-red-500">Erro: {error}</div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Orçamentos</h1>
-          <p className="text-gray-600">Controle seus gastos por categoria</p>
+          <h1 className="text-3xl font-bold">Orçamentos</h1>
+          <p className="text-muted-foreground">
+            Gerencie seus limites de gastos por categoria
+          </p>
         </div>
-        <div className="flex items-center space-x-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Mês
-            </label>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="p-2 border border-gray-300 rounded-md"
-            />
-          </div>
-          <Link href="/budgets/new">
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Orçamento
-            </Button>
-          </Link>
-        </div>
+        <Link href="/budgets/new">
+          <Button>
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Orçamento
+          </Button>
+        </Link>
       </div>
 
-      {/* Loading State */}
-      {loading && (
-        <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6">
-                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                <div className="h-3 bg-gray-200 rounded w-1/2 mb-4"></div>
-                <div className="h-3 bg-gray-200 rounded w-full mb-2"></div>
-                <div className="h-3 bg-gray-200 rounded w-2/3"></div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Budgets List */}
-      {!loading && (
-        <div className="space-y-4">
-          {budgets.map((budget, index) => {
-            const status = getBudgetStatus(budget)
-            
-            // Usando type assertion para bypassar TypeScript
-            const budgetAny = budget as any
-            
-            // Usando acesso seguro com fallbacks
-            const budgetId = budgetAny.id || budgetAny.budget_id || budgetAny._id || `budget-${index}`
-            const month = budgetAny.month || budgetAny.month_year || budgetAny.date || new Date().toISOString()
-            const limitAmount = budgetAny.limit_amount || budgetAny.limit || budgetAny.amount || 0
-            const spentAmount = budgetAny.spent_amount || budgetAny.spent || budgetAny.used_amount || 0
-            const percentageUsed = budgetAny.percentage_used || budgetAny.percentage || budgetAny.percent_used || 0
-            const categoryName = budgetAny.category?.name || budgetAny.category_name || 'Categoria'
-            const categoryIcon = budgetAny.category?.icon || '💰'
-
-            return (
-              <Card key={budgetId} className={`${status.bgColor} border-l-4 ${status.borderColor}`}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-2xl">{categoryIcon}</span>
-                      <div>
-                        <CardTitle className="text-lg">{categoryName}</CardTitle>
-                        <CardDescription>
-                          Orçamento de {new Date(month).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {budget.status === 'exceeded' && (
-                        <Badge variant="destructive">
-                          <AlertTriangle className="mr-1 h-3 w-3" />
-                          Excedido
-                        </Badge>
-                      )}
-                      {budget.status === 'warning' && (
-                        <Badge variant="secondary">
-                          <AlertTriangle className="mr-1 h-3 w-3" />
-                          Alerta
-                        </Badge>
-                      )}
-                      <Badge variant="outline">
-                        {Math.round(percentageUsed)}%
-                      </Badge>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {/* Progress Bar */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>Gasto: {formatCurrency(spentAmount)}</span>
-                        <span>Limite: {formatCurrency(limitAmount)}</span>
-                      </div>
-                      <Progress value={Math.min(percentageUsed, 100)} className="h-2" />
-                    </div>
-
-                    {/* Status Info */}
-                    <div className="flex items-center justify-between text-sm">
-                      <span className={status.color}>
-                        {budget.status === 'exceeded' && 'Orçamento excedido!'}
-                        {budget.status === 'warning' && 'Próximo do limite'}
-                        {budget.status === 'ok' && 'Dentro do orçamento'}
-                      </span>
-                      <span className="text-gray-600">
-                        Restante: {formatCurrency(limitAmount - spentAmount)}
-                      </span>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex space-x-2 pt-2">
-                      <Button variant="outline" size="sm" className="flex-1">
-                        <Edit className="mr-2 h-4 w-4" />
-                        Editar
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="flex-1"
-                        onClick={() => handleDelete(budgetId, categoryName)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Excluir
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Empty State */}
-      {!loading && budgets.length === 0 && (
+      <div className="grid gap-6">
+        {/* Filtro por Mês */}
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Target className="h-16 w-16 text-gray-400 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Nenhum orçamento definido
-            </h3>
-            <p className="text-sm text-gray-500 text-center mb-6">
-              Crie orçamentos para controlar seus gastos por categoria
-            </p>
-            <Link href="/budgets/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Criar Primeiro Orçamento
-              </Button>
-            </Link>
+          <CardHeader>
+            <CardTitle>Filtrar por Mês</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Selecione o mês" />
+              </SelectTrigger>
+              <SelectContent>
+                {monthOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
-      )}
+
+        {/* Lista de Orçamentos */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Orçamentos do Mês</CardTitle>
+            <CardDescription>
+              {formatMonth(selectedMonth + '-01')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {budgets.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground mb-4">
+                  Nenhum orçamento encontrado para este mês
+                </p>
+                <Link href="/budgets/new">
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Criar Primeiro Orçamento
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead>Mês</TableHead>
+                    <TableHead>Valor Limite</TableHead>
+                    <TableHead>Alerta</TableHead>
+                    <TableHead>Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {budgets.map((budget) => (
+                    <TableRow key={budget.id}>
+                      <TableCell className="font-medium">
+                        {getCategoryName(budget.category_id)}
+                      </TableCell>
+                      <TableCell>
+                        {formatMonth(budget.month)}
+                      </TableCell>
+                      <TableCell>
+                        {formatCurrency(budget.limit_amount)}
+                      </TableCell>
+                      <TableCell>
+                        {budget.alert_percentage ? (
+                          <Badge variant="secondary">
+                            {budget.alert_percentage}%
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                          >
+                            <Link href={`/budgets/edit/${budget.id}`}>
+                              <Edit className="w-4 h-4" />
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteBudget(budget.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
