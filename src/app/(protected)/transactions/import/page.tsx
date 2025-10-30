@@ -3,120 +3,236 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
+import { useCategoriesStore } from '@/lib/stores/categories-store'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 
-export default function ImportTransactionsPage() {
+interface TransactionFormData {
+  description: string
+  amount: number
+  type: 'income' | 'expense'
+  categoryId: string
+  transactionDate: string
+  installments: number
+}
+
+export default function NewTransactionPage() {
   const router = useRouter()
-  const { addTransaction } = useTransactionsStore()
-  const [loading, setLoading] = useState(false)
+  const { addTransaction, loading } = useTransactionsStore()
+  const { categories } = useCategoriesStore()
+  const [formData, setFormData] = useState<TransactionFormData>({
+    description: '',
+    amount: 0,
+    type: 'expense',
+    categoryId: '',
+    transactionDate: new Date().toISOString().split('T')[0],
+    installments: 1
+  })
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    setLoading(true)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!formData.description || !formData.categoryId || formData.amount <= 0) {
+      toast.error('Preencha todos os campos obrigatórios')
+      return
+    }
 
     try {
-      const text = await file.text()
-      const lines = text.split('\n')
-      let successCount = 0
-      let errorCount = 0
+      if (formData.installments > 1) {
+        // Criar transações parceladas
+        const installmentAmount = formData.amount / formData.installments
+        let createdCount = 0
 
-      // Processar cada linha do CSV
-      for (let i = 1; i < lines.length; i++) { // Pular cabeçalho
-        const line = lines[i].trim()
-        if (!line) continue
+        for (let i = 0; i < formData.installments; i++) {
+          const installmentDate = new Date(formData.transactionDate)
+          installmentDate.setMonth(installmentDate.getMonth() + i)
 
-        const [description, amount, type, category_id, transaction_date] = line.split(',')
+          const transactionData = {
+            description: `${formData.description} (${i + 1}/${formData.installments})`,
+            amount: installmentAmount,
+            type: formData.type,
+            category_id: formData.categoryId,
+            transaction_date: installmentDate.toISOString().split('T')[0],
+          }
 
-        const transactionData = {
-          description: description || '',
-          amount: parseFloat(amount) || 0,
-          type: (type || 'expense') as 'income' | 'expense',
-          category_id: category_id || '',
-          transaction_date: transaction_date || new Date().toISOString().split('T')[0],
-        }
-
-        if (transactionData.description && transactionData.amount > 0) {
           try {
             await addTransaction(transactionData)
-            successCount++
+            createdCount++
           } catch (error) {
-            errorCount++
+            toast.error(`Erro ao criar parcela ${i + 1}: ${(error as Error).message}`)
           }
-        } else {
-          errorCount++
         }
-      }
 
-      if (successCount > 0) {
-        toast.success(`${successCount} transações importadas com sucesso!`)
-      }
-      if (errorCount > 0) {
-        toast.error(`${errorCount} transações falharam ao importar`)
-      }
+        toast.success(`${createdCount} parcelas criadas com sucesso!`)
+      } else {
+        // Criar transação única
+        const transactionData = {
+          description: formData.description,
+          amount: formData.amount,
+          type: formData.type,
+          category_id: formData.categoryId,
+          transaction_date: formData.transactionDate,
+        }
 
-      if (successCount > 0) {
-        router.push('/transactions')
+        await addTransaction(transactionData)
+        toast.success('Transação criada com sucesso!')
       }
+      
+      router.push('/transactions')
     } catch (error) {
-      toast.error('Erro ao processar arquivo: ' + (error as Error).message)
-    } finally {
-      setLoading(false)
+      toast.error((error as Error).message)
     }
   }
+
+  const handleInputChange = (field: keyof TransactionFormData, value: string | number) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  // Filtra categorias baseadas no tipo selecionado
+  const filteredCategories = categories.filter(cat => cat.type === formData.type)
 
   return (
     <div className="container mx-auto py-6">
       <div className="max-w-2xl mx-auto">
         <Card>
           <CardHeader>
-            <CardTitle>Importar Transações</CardTitle>
+            <CardTitle>Nova Transação</CardTitle>
             <CardDescription>
-              Faça upload de um arquivo CSV para importar transações em massa
+              Adicione uma nova entrada ou saída ao seu controle financeiro
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  disabled={loading}
-                  className="hidden"
-                  id="csv-upload"
-                />
-                <label
-                  htmlFor="csv-upload"
-                  className="cursor-pointer block"
-                >
-                  <div className="flex flex-col items-center justify-center space-y-4">
-                    <div className="text-lg font-medium">
-                      {loading ? 'Processando...' : 'Clique para fazer upload do CSV'}
-                    </div>
-                    <Button variant="outline" disabled={loading}>
-                      Selecionar Arquivo
-                    </Button>
-                  </div>
-                </label>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div className="space-y-4">
+                {/* Tipo */}
+                <div className="space-y-2">
+                  <label htmlFor="type" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Tipo *
+                  </label>
+                  <Select 
+                    value={formData.type} 
+                    onValueChange={(value: 'income' | 'expense') => handleInputChange('type', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="income">Receita</SelectItem>
+                      <SelectItem value="expense">Despesa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Descrição */}
+                <div className="space-y-2">
+                  <label htmlFor="description" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Descrição *
+                  </label>
+                  <Input
+                    id="description"
+                    placeholder="Ex: Aluguel, Salário, Mercado..."
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Valor */}
+                <div className="space-y-2">
+                  <label htmlFor="amount" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Valor (R$) *
+                  </label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0,00"
+                    value={formData.amount || ''}
+                    onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
+                    required
+                  />
+                </div>
+
+                {/* Parcelas */}
+                <div className="space-y-2">
+                  <label htmlFor="installments" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Parcelas
+                  </label>
+                  <Input
+                    id="installments"
+                    type="number"
+                    min="1"
+                    max="24"
+                    placeholder="1"
+                    value={formData.installments}
+                    onChange={(e) => handleInputChange('installments', parseInt(e.target.value) || 1)}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Número de parcelas (1 para transação única)
+                  </p>
+                </div>
+
+                {/* Categoria */}
+                <div className="space-y-2">
+                  <label htmlFor="category" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Categoria *
+                  </label>
+                  <Select 
+                    value={formData.categoryId} 
+                    onValueChange={(value) => handleInputChange('categoryId', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredCategories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Data */}
+                <div className="space-y-2">
+                  <label htmlFor="transactionDate" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Data *
+                  </label>
+                  <Input
+                    id="transactionDate"
+                    type="date"
+                    value={formData.transactionDate}
+                    onChange={(e) => handleInputChange('transactionDate', e.target.value)}
+                    required
+                  />
+                </div>
               </div>
 
-              <div className="bg-muted p-4 rounded-lg">
-                <h3 className="font-medium mb-2">Formato do CSV esperado:</h3>
-                <pre className="text-sm">
-                  {`descrição,valor,tipo,category_id,data
-Aluguel,1500.00,expense,category_uuid,2024-01-15
-Salário,3000.00,income,category_uuid,2024-01-10
-...`}
-                </pre>
-                <p className="text-sm text-muted-foreground mt-2">
-                  A primeira linha deve conter o cabeçalho. Use "income" para receitas e "expense" para despesas.
-                </p>
+              <div className="flex gap-4 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push('/transactions')}
+                  disabled={loading}
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={loading}
+                >
+                  {loading ? 'Criando...' : 'Criar Transação'}
+                </Button>
               </div>
-            </div>
+            </form>
           </CardContent>
         </Card>
       </div>
