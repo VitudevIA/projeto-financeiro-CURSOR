@@ -22,8 +22,8 @@ export default function TransactionsPage() {
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
-    categoryId: '',
-    cardId: '',
+    categoryId: 'all',
+    cardId: 'all',
     paymentMethod: 'all' as 'all' | 'credit' | 'debit' | 'cash' | 'pix' | 'boleto',
     search: ''
   })
@@ -127,7 +127,7 @@ export default function TransactionsPage() {
           <Select value={filters.categoryId} onValueChange={(v) => setFilters(f => ({ ...f, categoryId: v }))}>
             <SelectTrigger><SelectValue placeholder="Todas as categorias" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todas as categorias</SelectItem>
+              <SelectItem value="all">Todas as categorias</SelectItem>
               {categories.map(cat => (
                 <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
               ))}
@@ -139,7 +139,7 @@ export default function TransactionsPage() {
           <Select value={filters.cardId} onValueChange={(v) => setFilters(f => ({ ...f, cardId: v }))}>
             <SelectTrigger><SelectValue placeholder="Todos os cartões" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Todos os cartões</SelectItem>
+              <SelectItem value="all">Todos os cartões</SelectItem>
               {cards.map(card => (
                 <SelectItem key={card.id} value={card.id}>{card.name}</SelectItem>
               ))}
