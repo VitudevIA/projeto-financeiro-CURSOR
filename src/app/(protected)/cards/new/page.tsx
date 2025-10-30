@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/lib/stores/auth-store'
 
 interface CardFormData {
   name: string
@@ -20,7 +21,7 @@ interface CardFormData {
 export default function NewCardPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [user, setUser] = useState<any>(null)
+  const { user } = useAuthStore() // busca usuário do store global
   const [formData, setFormData] = useState<CardFormData>({
     name: '',
     type: 'credit',
@@ -28,15 +29,6 @@ export default function NewCardPage() {
     closing_day: 1,
     due_day: 10
   })
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
-    }
-    
-    getUser()
-  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,19 +47,12 @@ export default function NewCardPage() {
     }
 
     try {
-      // Verificar se a tabela 'cards' existe, se não, usar outra tabela
       const { error } = await supabase
         .from('cards')
-        .insert([{
-          ...formData,
-          user_id: user.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        }])
+        .insert([{ ...formData, user_id: user.id, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }])
 
       if (error) {
         console.error('Erro do Supabase:', error)
-        // Se a tabela não existir, mostrar mensagem
         if (error.code === '42P01') {
           toast.error('Tabela de cartões não configurada')
         } else {
@@ -75,7 +60,7 @@ export default function NewCardPage() {
         }
         return
       }
-      
+
       toast.success('Cartão cadastrado com sucesso!')
       router.push('/cards')
     } catch (error) {
