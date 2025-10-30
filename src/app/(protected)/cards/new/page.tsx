@@ -73,6 +73,28 @@ export default function NewCardPage() {
       // Normaliza últimos 4 dígitos
       const normalizedDigits = (formData.last_digits || '').trim().replace(/\D/g, '').slice(-4)
 
+      // Verifica se já existe cartão igual para este usuário
+      let existQuery = sb
+        .from('cards')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('type', formData.type)
+        .eq('name', formData.name)
+
+      existQuery = normalizedDigits ? existQuery.eq('last_digits', normalizedDigits) : existQuery.is('last_digits', null)
+
+      const { data: existing, error: existErr } = await existQuery.maybeSingle()
+
+      if (existErr) {
+        console.warn('Aviso na verificação de cartão existente:', existErr)
+      }
+
+      if (existing) {
+        toast.error('Já existe um cartão com este nome, tipo e últimos dígitos.')
+        setLoading(false)
+        return
+      }
+
       const payload = {
         name: formData.name,
         type: formData.type,
