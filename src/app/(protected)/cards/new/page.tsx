@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -11,6 +10,7 @@ import { toast } from 'sonner'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { useAuthStore } from '@/lib/stores/auth-store'
+import { createClient } from '@/lib/supabase/client'
 
 interface CardFormData {
   name: string
@@ -36,44 +36,43 @@ export default function NewCardPage() {
     e.preventDefault()
     setLoading(true)
 
-    if (!user) {
-      toast.error('Usuário não autenticado')
-      setLoading(false)
-      return
-    }
-
-    if (!formData.name) {
-      toast.error('Informe o nome do cartão')
-      setLoading(false)
-      return
-    }
-
-    if (formData.type === 'credit' && (!formData.limit || formData.limit <= 0)) {
-      toast.error('Informe um limite válido para cartão de crédito')
-      setLoading(false)
-      return
-    }
-
-    // Garante sessão válida (JWT) antes do insert
     try {
-      const { data: s1 } = await supabase.auth.getSession()
-      if (!s1.session) {
-        await supabase.auth.refreshSession()
-      }
-      const { data: s2 } = await supabase.auth.getSession()
-      if (!s2.session) {
-        toast.error('Sessão expirada. Faça login novamente.')
-        setLoading(false)
+      if (!user) {
+        toast.error('Usuário não autenticado')
         return
       }
-    } catch (e) {
-      console.warn('Falha ao verificar sessão antes do insert:', e)
-    }
 
-    // Normaliza últimos 4 dígitos
-    const normalizedDigits = (formData.last_digits || '').trim().replace(/\D/g, '').slice(-4)
+      if (!formData.name) {
+        toast.error('Informe o nome do cartão')
+        return
+      }
 
-    try {
+      if (formData.type === 'credit' && (!formData.limit || formData.limit <= 0)) {
+        toast.error('Informe um limite válido para cartão de crédito')
+        return
+      }
+
+      // Verifica e garante sessão válida antes do insert
+      const sb = createClient()
+      
+      const { data: sessionData, error: sessionError } = await sb.auth.getSession()
+      
+      if (!sessionData.session || sessionError) {
+        // Tenta renovar a sessão
+        const { data: refreshData, error: refreshError } = await sb.auth.refreshSession()
+        
+        if (!refreshData.session || refreshError) {
+          toast.error('Sessão expirada. Faça login novamente.')
+          setTimeout(() => {
+            router.push('/login')
+          }, 2000)
+          return
+        }
+      }
+
+      // Normaliza últimos 4 dígitos
+      const normalizedDigits = (formData.last_digits || '').trim().replace(/\D/g, '').slice(-4)
+
       const payload = {
         name: formData.name,
         type: formData.type,
@@ -82,31 +81,36 @@ export default function NewCardPage() {
         limit: formData.type === 'credit' ? formData.limit : null,
         user_id: user.id,
         is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
       }
 
-      const { error } = await supabase
+      const { error } = await sb
         .from('cards')
         .insert([payload])
 
       if (error) {
         console.error('Erro do Supabase:', error)
+        
         if (error.code === '42P01') {
-          toast.error('Tabela de cartões não configurada')
+          toast.error('Tabela de cartões não configurada no banco de dados')
         } else if (error.code === '42501') {
           toast.error('Permissão negada. Tente refazer login.')
+        } else if (error.code === 'PGRST301') {
+          toast.error('Erro de autenticação. Faça login novamente.')
+          setTimeout(() => {
+            router.push('/login')
+          }, 2000)
         } else {
-          toast.error('Erro ao cadastrar cartão')
+          toast.error(`Erro ao cadastrar cartão: ${error.message}`)
         }
         return
       }
 
       toast.success('Cartão cadastrado com sucesso!')
       router.push('/cards')
+      
     } catch (error) {
       console.error('Erro ao cadastrar cartão:', error)
-      toast.error('Erro ao cadastrar cartão')
+      toast.error('Erro inesperado ao cadastrar cartão. Tente novamente.')
     } finally {
       setLoading(false)
     }
