@@ -42,10 +42,11 @@ export default function NewTransactionPage() {
   const [cardId, setCardId] = useState<string>('')
   const [showOnlyActiveCards, setShowOnlyActiveCards] = useState<boolean>(true)
 
-  // carregar cartões
-  useEffect(() => { fetchCards() }, [fetchCards])
-  // carregar categorias
-  useEffect(() => { fetchCategories() }, [fetchCategories])
+  // carregar cartões e categorias ao montar o componente
+  useEffect(() => {
+    fetchCards()
+    fetchCategories()
+  }, [fetchCards, fetchCategories])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -174,6 +175,8 @@ export default function NewTransactionPage() {
                       if (value !== 'credit' && value !== 'debit') {
                         setCardId('')
                       } else {
+                        // Recarrega os cartões quando muda para crédito/débito para garantir lista atualizada
+                        fetchCards()
                         const methodType = value
                         const current = cards.find(c => c.id === cardId)
                         if (current && current.type !== methodType) {
@@ -210,17 +213,38 @@ export default function NewTransactionPage() {
                         <SelectValue placeholder="Selecione um cartão" />
                       </SelectTrigger>
                       <SelectContent>
-                        {cards
-                          .filter(card => {
+                        {(() => {
+                          const filteredCards = cards.filter(card => {
+                            // Filtra por cartões ativos se a opção estiver marcada
                             if (showOnlyActiveCards && !card.is_active) return false
-                            const t = String(card.type || '').trim().toLowerCase()
-                            const isCredit = ['credit', 'crédito', 'credito'].includes(t)
-                            const isDebit = ['debit', 'débito', 'debito'].includes(t)
-                            return formData.paymentMethod === 'credit' ? isCredit : isDebit
+                            
+                            // Normaliza o tipo do cartão para comparação (remove acentos e converte para minúsculas)
+                            const cardType = String(card.type || '').trim().toLowerCase()
+                            
+                            // Verifica se o tipo do cartão corresponde ao método de pagamento
+                            if (formData.paymentMethod === 'credit') {
+                              return ['credit', 'crédito', 'credito'].includes(cardType)
+                            } else if (formData.paymentMethod === 'debit') {
+                              return ['debit', 'débito', 'debito'].includes(cardType)
+                            }
+                            
+                            return false
                           })
-                          .map(card => (
-                          <SelectItem key={card.id} value={card.id}>{card.name}</SelectItem>
-                        ))}
+
+                          if (filteredCards.length === 0) {
+                            return (
+                              <div className="px-2 py-1.5 text-sm text-gray-500">
+                                Nenhum cartão {formData.paymentMethod === 'credit' ? 'de crédito' : 'de débito'} encontrado
+                              </div>
+                            )
+                          }
+
+                          return filteredCards.map(card => (
+                            <SelectItem key={card.id} value={card.id}>
+                              {card.name}{card.brand ? ` (${card.brand})` : ''}
+                            </SelectItem>
+                          ))
+                        })()}
                       </SelectContent>
                     </Select>
                   </div>

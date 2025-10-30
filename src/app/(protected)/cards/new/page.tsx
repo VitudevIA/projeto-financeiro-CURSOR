@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { useAuthStore } from '@/lib/stores/auth-store'
+import { useCardsStore } from '@/lib/stores/cards-store'
 import { createClient } from '@/lib/supabase/client'
 
 interface CardFormData {
@@ -24,6 +25,7 @@ export default function NewCardPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const { user } = useAuthStore()
+  const { addCard } = useCardsStore()
   const [formData, setFormData] = useState<CardFormData>({
     name: '',
     type: 'credit',
@@ -105,24 +107,27 @@ export default function NewCardPage() {
         is_active: true,
       }
 
-      const { error } = await sb
-        .from('cards')
-        .insert([payload])
+      // Usa o store para adicionar o cartão (atualiza o estado automaticamente)
+      const { error: storeError } = await addCard({
+        ...payload,
+        is_active: true,
+      })
 
-      if (error) {
-        console.error('Erro do Supabase:', error)
+      if (storeError) {
+        console.error('Erro ao cadastrar cartão:', storeError)
         
-        if (error.code === '42P01') {
+        // Tenta identificar o tipo de erro
+        if (storeError.includes('42P01') || storeError.includes('não configurada')) {
           toast.error('Tabela de cartões não configurada no banco de dados')
-        } else if (error.code === '42501') {
+        } else if (storeError.includes('42501') || storeError.includes('Permissão negada')) {
           toast.error('Permissão negada. Tente refazer login.')
-        } else if (error.code === 'PGRST301') {
+        } else if (storeError.includes('PGRST301') || storeError.includes('autenticação')) {
           toast.error('Erro de autenticação. Faça login novamente.')
           setTimeout(() => {
             router.push('/login')
           }, 2000)
         } else {
-          toast.error(`Erro ao cadastrar cartão: ${error.message}`)
+          toast.error(`Erro ao cadastrar cartão: ${storeError}`)
         }
         return
       }
