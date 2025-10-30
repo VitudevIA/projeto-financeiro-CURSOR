@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { Button } from '@/components/ui/button'
@@ -24,17 +24,40 @@ export default function ProtectedLayout({
 }) {
   const { user, loading, signOut, checkAuth } = useAuthStore()
   const router = useRouter()
+  const hasCheckedAuth = useRef(false)
+  const redirectAttempted = useRef(false)
 
+  // Verifica autenticação apenas uma vez ao montar
   useEffect(() => {
-    checkAuth()
+    if (!hasCheckedAuth.current) {
+      hasCheckedAuth.current = true
+      checkAuth()
+    }
   }, [checkAuth])
 
+  // Redireciona apenas uma vez se não houver usuário após verificar
   useEffect(() => {
-    if (!loading && !user) {
-      // Usa window.location para garantir redirect mesmo se o middleware falhar
-      window.location.href = '/login'
+    // Só tenta redirecionar se já verificou autenticação e não há usuário
+    if (hasCheckedAuth.current && !loading && !user && !redirectAttempted.current) {
+      redirectAttempted.current = true
+      
+      // Pequeno delay para não interferir com o middleware do Next.js
+      // Se o middleware redirecionou, este código não será executado
+      setTimeout(() => {
+        const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
+        const isProtectedRoute = currentPath.startsWith('/dashboard') || 
+                                 currentPath.startsWith('/transactions') ||
+                                 currentPath.startsWith('/cards') ||
+                                 currentPath.startsWith('/budgets') ||
+                                 currentPath.startsWith('/settings')
+        
+        // Só redireciona se ainda estiver em rota protegida (middleware não funcionou)
+        if (isProtectedRoute && typeof window !== 'undefined') {
+          window.location.replace('/login')
+        }
+      }, 50)
     }
-  }, [user, loading, router])
+  }, [user, loading])
 
   const handleSignOut = async () => {
     await signOut()
@@ -50,10 +73,6 @@ export default function ProtectedLayout({
   }
 
   if (!user) {
-    // Redirect imediato sem mostrar mensagem (o middleware deveria ter feito isso)
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login'
-    }
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center text-gray-600">Redirecionando para o login...</div>
