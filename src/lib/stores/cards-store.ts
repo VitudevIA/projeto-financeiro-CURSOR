@@ -7,26 +7,20 @@ interface Card {
   user_id: string
   limit_amount: number | null  // ✅ CORRETO: 'limit_amount' conforme banco de dados
   limit?: number | null        // Mantido para compatibilidade
-  is_active: boolean
-  created_at: string
-  updated_at: string
+  is_active: boolean | null   // ✅ Pode ser null no banco de dados
+  created_at: string | null
+  updated_at: string | null
   name: string
   type: string
   brand: string | null
   last_digits: string | null
 }
 
-// Tipo para inserção de cartão - aceita 'limit' ou 'limit_amount'
-type CardInsert = Omit<Card, 'id' | 'created_at' | 'updated_at' | 'limit_amount'> & {
-  limit?: number | null
-  limit_amount?: number | null
-}
-
 interface CardsState {
   cards: Card[]
   loading: boolean
   fetchCards: () => Promise<void>
-  addCard: (card: CardInsert) => Promise<{ error: string | null }>
+  addCard: (card: Omit<Card, 'id' | 'created_at' | 'updated_at'>) => Promise<{ error: string | null }>
   updateCard: (id: string, updates: Partial<Card>) => Promise<{ error: string | null }>
   deleteCard: (id: string) => Promise<{ error: string | null }>
   toggleCardStatus: (id: string) => Promise<{ error: string | null }>
@@ -52,9 +46,10 @@ export const useCardsStore = create<CardsState>((set, get) => ({
       }
 
       // Mapeia limit_amount para limit para compatibilidade com o código existente
-      const cardsWithLimit = (data || []).map((card: any) => ({
+      const cardsWithLimit: Card[] = (data || []).map((card: any): Card => ({
         ...card,
         limit: card.limit_amount, // Adiciona 'limit' para compatibilidade
+        is_active: card.is_active ?? true, // Garante boolean (default true se null)
       }))
 
       set({ cards: cardsWithLimit, loading: false })
@@ -87,9 +82,10 @@ export const useCardsStore = create<CardsState>((set, get) => ({
 
       // Add to local state - mapeia limit_amount para limit para compatibilidade
       const { cards } = get()
-      const cardWithLimit = {
+      const cardWithLimit: Card = {
         ...data,
         limit: data.limit_amount, // Adiciona 'limit' para compatibilidade
+        is_active: data.is_active ?? true, // Garante que is_active seja boolean (default true)
       }
       set({ cards: [cardWithLimit, ...cards] })
 
@@ -123,8 +119,13 @@ export const useCardsStore = create<CardsState>((set, get) => ({
 
       // Update local state - mapeia limit_amount para limit
       const { cards } = get()
-      const updatedCards = cards.map(card => 
-        card.id === id ? { ...card, ...data, limit: data.limit_amount } : card
+      const updatedCards: Card[] = cards.map(card => 
+        card.id === id ? { 
+          ...card, 
+          ...data, 
+          limit: data.limit_amount,
+          is_active: data.is_active ?? card.is_active ?? true, // Garante boolean
+        } : card
       )
       set({ cards: updatedCards })
 
