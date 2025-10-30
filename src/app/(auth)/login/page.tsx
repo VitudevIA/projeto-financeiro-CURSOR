@@ -40,6 +40,16 @@ export default function LoginPage() {
         console.log('Sessao criada com sucesso!')
         console.log('User ID:', sessionData.session.user.id)
         console.log('Email:', sessionData.session.user.email)
+        // Sincroniza cookies no servidor para o middleware reconhecer a sessão
+        try {
+          await fetch('/auth/callback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event: 'SIGNED_IN', session: sessionData.session }),
+          })
+        } catch (e) {
+          console.warn('Falha ao sincronizar cookies no callback:', e)
+        }
       } else {
         console.error('Nenhuma sessao encontrada apos login!')
       }
