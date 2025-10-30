@@ -8,8 +8,8 @@ interface Card {
   limit_amount: number | null  // ✅ CORRETO: 'limit_amount' conforme banco de dados
   limit?: number | null        // Mantido para compatibilidade
   is_active: boolean
-  created_at: string
-  updated_at: string
+  created_at: string | null   // Pode ser null do banco
+  updated_at: string | null    // Pode ser null do banco
   name: string
   type: string
   brand: string | null
@@ -46,9 +46,12 @@ export const useCardsStore = create<CardsState>((set, get) => ({
       }
 
       // Mapeia limit_amount para limit para compatibilidade com o código existente
-      const cardsWithLimit = (data || []).map((card: any) => ({
+      const cardsWithLimit: Card[] = (data || []).map((card: any): Card => ({
         ...card,
-        limit: card.limit_amount, // Adiciona 'limit' para compatibilidade
+        limit: card.limit_amount ?? null, // Adiciona 'limit' para compatibilidade
+        is_active: card.is_active ?? true, // Garante que sempre seja boolean (default true)
+        created_at: card.created_at ?? new Date().toISOString(),
+        updated_at: card.updated_at ?? new Date().toISOString(),
       }))
 
       set({ cards: cardsWithLimit, loading: false })
@@ -81,9 +84,12 @@ export const useCardsStore = create<CardsState>((set, get) => ({
 
       // Add to local state - mapeia limit_amount para limit para compatibilidade
       const { cards } = get()
-      const cardWithLimit = {
+      const cardWithLimit: Card = {
         ...data,
-        limit: data.limit_amount, // Adiciona 'limit' para compatibilidade
+        limit: data.limit_amount ?? null, // Adiciona 'limit' para compatibilidade
+        is_active: data.is_active ?? true, // Garante que sempre seja boolean (default true)
+        created_at: data.created_at ?? new Date().toISOString(),
+        updated_at: data.updated_at ?? new Date().toISOString(),
       }
       set({ cards: [cardWithLimit, ...cards] })
 
@@ -117,8 +123,15 @@ export const useCardsStore = create<CardsState>((set, get) => ({
 
       // Update local state - mapeia limit_amount para limit
       const { cards } = get()
-      const updatedCards = cards.map(card => 
-        card.id === id ? { ...card, ...data, limit: data.limit_amount } : card
+      const updatedCards: Card[] = cards.map(card => 
+        card.id === id ? { 
+          ...card, 
+          ...data, 
+          limit: data.limit_amount ?? null,
+          is_active: data.is_active ?? card.is_active ?? true, // Garante boolean
+          created_at: data.created_at ?? card.created_at ?? new Date().toISOString(),
+          updated_at: data.updated_at ?? new Date().toISOString(),
+        } : card
       )
       set({ cards: updatedCards })
 
