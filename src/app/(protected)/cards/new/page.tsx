@@ -102,16 +102,13 @@ export default function NewCardPage() {
         type: formData.type,
         brand: formData.brand || null,
         last_digits: normalizedDigits || null,
-        limit: formData.type === 'credit' ? formData.limit : null,
+        limit_amount: formData.type === 'credit' ? formData.limit : null,
         user_id: user.id,
         is_active: true,
       }
 
       // Usa o store para adicionar o cartão (atualiza o estado automaticamente)
-      const { error: storeError } = await addCard({
-        ...payload,
-        is_active: true,
-      })
+      const { error: storeError } = await addCard(payload)
 
       if (storeError) {
         console.error('Erro ao cadastrar cartão:', storeError)

@@ -7,9 +7,9 @@ interface Card {
   user_id: string
   limit_amount: number | null  // ✅ CORRETO: 'limit_amount' conforme banco de dados
   limit?: number | null        // Mantido para compatibilidade
-  is_active: boolean | null   // ✅ Pode ser null no banco de dados
-  created_at: string | null
-  updated_at: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
   name: string
   type: string
   brand: string | null
@@ -46,10 +46,9 @@ export const useCardsStore = create<CardsState>((set, get) => ({
       }
 
       // Mapeia limit_amount para limit para compatibilidade com o código existente
-      const cardsWithLimit: Card[] = (data || []).map((card: any): Card => ({
+      const cardsWithLimit = (data || []).map((card: any) => ({
         ...card,
         limit: card.limit_amount, // Adiciona 'limit' para compatibilidade
-        is_active: card.is_active ?? true, // Garante boolean (default true se null)
       }))
 
       set({ cards: cardsWithLimit, loading: false })
@@ -82,10 +81,9 @@ export const useCardsStore = create<CardsState>((set, get) => ({
 
       // Add to local state - mapeia limit_amount para limit para compatibilidade
       const { cards } = get()
-      const cardWithLimit: Card = {
+      const cardWithLimit = {
         ...data,
         limit: data.limit_amount, // Adiciona 'limit' para compatibilidade
-        is_active: data.is_active ?? true, // Garante que is_active seja boolean (default true)
       }
       set({ cards: [cardWithLimit, ...cards] })
 
@@ -119,13 +117,8 @@ export const useCardsStore = create<CardsState>((set, get) => ({
 
       // Update local state - mapeia limit_amount para limit
       const { cards } = get()
-      const updatedCards: Card[] = cards.map(card => 
-        card.id === id ? { 
-          ...card, 
-          ...data, 
-          limit: data.limit_amount,
-          is_active: data.is_active ?? card.is_active ?? true, // Garante boolean
-        } : card
+      const updatedCards = cards.map(card => 
+        card.id === id ? { ...card, ...data, limit: data.limit_amount } : card
       )
       set({ cards: updatedCards })
 

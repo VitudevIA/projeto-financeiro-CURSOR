@@ -26,7 +26,10 @@ const supabase = createClient()
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      // Estado inicial - começa como null para evitar conflitos
+      // O middleware e checkAuth vão atualizar isso
+      return {
         user: null,
         loading: false,
 

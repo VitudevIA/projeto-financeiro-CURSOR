@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useAuthInit } from '@/hooks/useAuthInit'
@@ -31,10 +31,9 @@ export default function ProtectedLayout({
   useAuthInit()
 
   // Marca como montado após primeiro render (evita hydration mismatch)
-  // IMPORTANTE: Isso deve estar em useEffect, não no corpo do componente
-  useEffect(() => {
+  if (typeof window !== 'undefined' && !isMounted) {
     setIsMounted(true)
-  }, [])
+  }
 
   const handleSignOut = async () => {
     await signOut()
