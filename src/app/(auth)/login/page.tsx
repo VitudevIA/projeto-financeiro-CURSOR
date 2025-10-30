@@ -45,8 +45,27 @@ export default function LoginPage() {
       }
 
       toast.success('Login realizado com sucesso!')
-      await new Promise(resolve => setTimeout(resolve, 500))
-      window.location.href = '/dashboard'
+
+      // Garante que a sessão foi persistida antes de navegar
+      const start = Date.now()
+      const supa = createClient()
+      let hasSession = false
+      for (let i = 0; i < 5; i++) {
+        const { data } = await supa.auth.getSession()
+        if (data.session) { hasSession = true; break }
+        await new Promise(r => setTimeout(r, 150))
+      }
+      console.log('Sessão pronta?', hasSession, 'em', Date.now() - start, 'ms')
+
+      // Navegação preferencial via router (SPA)
+      router.replace('/dashboard')
+
+      // Fallback hard redirect (garante cookies em caso de edge/middleware)
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.location.pathname !== '/dashboard') {
+          window.location.assign('/dashboard')
+        }
+      }, 500)
     } catch (err) {
       console.error('Erro no login:', err)
       toast.error('Erro ao fazer login. Tente novamente.')
