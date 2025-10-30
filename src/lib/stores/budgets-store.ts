@@ -2,131 +2,67 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import type { Budget } from '@/types/database.types'
 
-interface BudgetWithDetails {
-  // Definindo todas as propriedades explicitamente
-  id: string
-  user_id: string
-  category_id: string
-  month: string
-  limit_amount: number
-  alert_percentage: number
-  created_at: string
-  updated_at: string
-  category: {
-    id: string
+// Se você precisar de dados relacionados (como nome da categoria)
+interface BudgetWithDetails extends Budget {
+  categories?: {
     name: string
-    icon: string | null
-    color: string | null
+    // outras propriedades da categoria se necessário
   }
-  spent_amount: number
-  percentage_used: number
-  status: 'ok' | 'warning' | 'exceeded'
 }
 
-interface BudgetsState {
+interface BudgetsStore {
   budgets: BudgetWithDetails[]
   loading: boolean
-  fetchBudgets: (month?: string) => Promise<void>
-  addBudget: (budget: Omit<Budget, 'id' | 'created_at' | 'updated_at'>) => Promise<{ error: string | null }>
-  updateBudget: (id: string, updates: Partial<Budget>) => Promise<{ error: string | null }>
-  deleteBudget: (id: string) => Promise<{ error: string | null }>
+  error: string | null
+  fetchBudgets: () => Promise<void>
+  addBudget: (budget: Omit<Budget, 'id' | 'created_at' | 'updated_at'>) => Promise<void>
+  updateBudget: (id: string, updates: Partial<Budget>) => Promise<void>
+  deleteBudget: (id: string) => Promise<void>
 }
 
-export const useBudgetsStore = create<BudgetsState>((set, get) => ({
+export const useBudgetsStore = create<BudgetsStore>((set, get) => ({
   budgets: [],
   loading: false,
+  error: null,
 
-  fetchBudgets: async (month) => {
+  fetchBudgets: async () => {
+    set({ loading: true, error: null })
     try {
-      set({ loading: true })
-      
-      const currentMonth = month || new Date().toISOString().slice(0, 7) + '-01'
-      
-      // Fetch budgets with category details
-      const { data: budgets, error: budgetsError } = await supabase
+      const { data, error } = await supabase
         .from('budgets')
         .select(`
           *,
-          category:categories(*)
+          categories (
+            name
+          )
         `)
-        .eq('month', currentMonth)
-        .order('created_at', { ascending: false })
+        .order('month', { ascending: false })
 
-      if (budgetsError) {
-        console.error('Erro ao buscar orçamentos:', budgetsError)
-        return
-      }
-
-      // Calculate spent amounts for each budget
-      const budgetsWithDetails: BudgetWithDetails[] = []
-      
-      for (const budget of budgets || []) {
-        // Get transactions for this category in the current month
-        const { data: transactions, error: transactionsError } = await supabase
-          .from('transactions')
-          .select('amount')
-          .eq('category_id', budget.category_id)
-          .gte('transaction_date', currentMonth)
-          .lt('transaction_date', new Date(new Date(currentMonth).getFullYear(), new Date(currentMonth).getMonth() + 1, 1).toISOString().slice(0, 10))
-
-        if (transactionsError) {
-          console.error('Erro ao buscar transações:', transactionsError)
-          continue
-        }
-
-        const spentAmount = transactions?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0
-        const percentageUsed = budget.limit_amount > 0 ? (spentAmount / budget.limit_amount) * 100 : 0
-        
-        let status: 'ok' | 'warning' | 'exceeded' = 'ok'
-        if (percentageUsed >= 100) {
-          status = 'exceeded'
-        } else if (percentageUsed >= budget.alert_percentage) {
-          status = 'warning'
-        }
-
-        budgetsWithDetails.push({
-          ...budget,
-          spent_amount: spentAmount,
-          percentage_used: percentageUsed,
-          status
-        } as BudgetWithDetails)
-      }
-
-      set({ budgets: budgetsWithDetails, loading: false })
+      if (error) throw error
+      set({ budgets: data || [] })
     } catch (error) {
-      console.error('Erro inesperado ao buscar orçamentos:', error)
+      set({ error: (error as Error).message })
+    } finally {
       set({ loading: false })
     }
   },
 
-  addBudget: async (budgetData) => {
+  addBudget: async (budget) => {
     try {
       const { data, error } = await supabase
         .from('budgets')
-        .insert([budgetData])
-        .select(`
-          *,
-          category:categories(*)
-        `)
+        .insert([budget])
+        .select()
         .single()
 
-      if (error) {
-        return { error: error.message }
-      }
+      if (error) throw error
 
-      // Add to local state
-      const { budgets } = get()
-      const budgetWithDetails: BudgetWithDetails = {
-        ...data,
-        spent_amount: 0,
-        percentage_used: 0,
-        status: 'ok'
-      } as BudgetWithDetails
-      set({ budgets: [budgetWithDetails, ...budgets] })
-
-      return { error: null }
+      set((state) => ({
+        budgets: [data, ...state.budgets]
+      }))
     } catch (error) {
-      return { error: 'Erro inesperado ao criar orçamento' }
+      set({ error: (error as Error).message })
+      throw error
     }
   },
 
@@ -136,27 +72,17 @@ export const useBudgetsStore = create<BudgetsState>((set, get) => ({
         .from('budgets')
         .update(updates)
         .eq('id', id)
-        .select(`
-          *,
-          category:categories(*)
-        `)
+        .select()
         .single()
 
-      if (error) {
-        return { error: error.message }
-      }
+      if (error) throw error
 
-      // Update local state
-      const { budgets } = get()
-      const updatedBudgets = budgets.map(budget => {
-        const budgetAny = budget as any
-        return budgetAny.id === id ? { ...budget, ...data } : budget
-      })
-      set({ budgets: updatedBudgets })
-
-      return { error: null }
+      set((state) => ({
+        budgets: state.budgets.map((b) => (b.id === id ? data : b))
+      }))
     } catch (error) {
-      return { error: 'Erro inesperado ao atualizar orçamento' }
+      set({ error: (error as Error).message })
+      throw error
     }
   },
 
@@ -167,21 +93,14 @@ export const useBudgetsStore = create<BudgetsState>((set, get) => ({
         .delete()
         .eq('id', id)
 
-      if (error) {
-        return { error: error.message }
-      }
+      if (error) throw error
 
-      // Remove from local state
-      const { budgets } = get()
-      const filteredBudgets = budgets.filter(budget => {
-        const budgetAny = budget as any
-        return budgetAny.id !== id
-      })
-      set({ budgets: filteredBudgets })
-
-      return { error: null }
+      set((state) => ({
+        budgets: state.budgets.filter((b) => b.id !== id)
+      }))
     } catch (error) {
-      return { error: 'Erro inesperado ao deletar orçamento' }
+      set({ error: (error as Error).message })
+      throw error
     }
-  },
+  }
 }))
