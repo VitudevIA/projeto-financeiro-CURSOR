@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useBudgetsStore } from '@/lib/stores/budgets-store'
+import { useTransactionsStore } from '@/lib/stores/transactions-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,92 +10,125 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 
-interface BudgetFormData {
+interface TransactionFormData {
+  description: string
+  amount: number
+  type: 'income' | 'expense'
   categoryId: string
-  month: string
-  limitAmount: number
-  alertPercentage: number | null
+  transactionDate: string
 }
 
-export default function NewBudgetPage() {
+export default function NewTransactionPage() {
   const router = useRouter()
-  const { addBudget, loading } = useBudgetsStore()
+  const { addTransaction, loading } = useTransactionsStore()
   const { categories } = useCategoriesStore()
-  const [formData, setFormData] = useState<BudgetFormData>({
+  const [formData, setFormData] = useState<TransactionFormData>({
+    description: '',
+    amount: 0,
+    type: 'expense',
     categoryId: '',
-    month: '',
-    limitAmount: 0,
-    alertPercentage: null
+    transactionDate: new Date().toISOString().split('T')[0]
   })
-
-  // Filtra apenas categorias de despesas para orçamentos
-  const expenseCategories = categories.filter(cat => cat.type === 'expense')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.categoryId || !formData.month || formData.limitAmount <= 0) {
+    if (!formData.description || !formData.categoryId || formData.amount <= 0) {
       toast.error('Preencha todos os campos obrigatórios')
       return
     }
 
     try {
-      const budgetData = {
+      const transactionData = {
+        description: formData.description,
+        amount: formData.amount,
+        type: formData.type,
         category_id: formData.categoryId,
-        month: formData.month,
-        limit_amount: formData.limitAmount,
-        alert_percentage: formData.alertPercentage,
+        transaction_date: formData.transactionDate,
       }
 
-      await addBudget(budgetData)
+      await addTransaction(transactionData)
       
-      toast.success('Orçamento criado com sucesso!')
-      router.push('/budgets')
+      toast.success('Transação criada com sucesso!')
+      router.push('/transactions')
     } catch (error) {
       toast.error((error as Error).message)
     }
   }
 
-  const handleInputChange = (field: keyof BudgetFormData, value: string | number | null) => {
+  const handleInputChange = (field: keyof TransactionFormData, value: string | number) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }))
   }
 
-  // Gera opções de meses (próximos 12 meses)
-  const getMonthOptions = () => {
-    const options = []
-    const today = new Date()
-    
-    for (let i = 0; i < 12; i++) {
-      const date = new Date(today.getFullYear(), today.getMonth() + i, 1)
-      const value = date.toISOString().split('T')[0]
-      const label = date.toLocaleDateString('pt-BR', { 
-        year: 'numeric', 
-        month: 'long' 
-      })
-      options.push({ value, label })
-    }
-    
-    return options
-  }
-
-  const monthOptions = getMonthOptions()
+  // Filtra categorias baseadas no tipo selecionado
+  const filteredCategories = categories.filter(cat => cat.type === formData.type)
 
   return (
     <div className="container mx-auto py-6">
       <div className="max-w-2xl mx-auto">
         <Card>
           <CardHeader>
-            <CardTitle>Criar Novo Orçamento</CardTitle>
+            <CardTitle>Nova Transação</CardTitle>
             <CardDescription>
-              Defina um limite de gastos para uma categoria específica no mês
+              Adicione uma nova entrada ou saída ao seu controle financeiro
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-4">
+                {/* Tipo */}
+                <div className="space-y-2">
+                  <label htmlFor="type" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Tipo *
+                  </label>
+                  <Select 
+                    value={formData.type} 
+                    onValueChange={(value: 'income' | 'expense') => handleInputChange('type', value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="income">Receita</SelectItem>
+                      <SelectItem value="expense">Despesa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Descrição */}
+                <div className="space-y-2">
+                  <label htmlFor="description" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Descrição *
+                  </label>
+                  <Input
+                    id="description"
+                    placeholder="Ex: Aluguel, Salário, Mercado..."
+                    value={formData.description}
+                    onChange={(e) => handleInputChange('description', e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Valor */}
+                <div className="space-y-2">
+                  <label htmlFor="amount" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Valor (R$) *
+                  </label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0,00"
+                    value={formData.amount || ''}
+                    onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
+                    required
+                  />
+                </div>
+
                 {/* Categoria */}
                 <div className="space-y-2">
                   <label htmlFor="category" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -109,7 +142,7 @@ export default function NewBudgetPage() {
                       <SelectValue placeholder="Selecione uma categoria" />
                     </SelectTrigger>
                     <SelectContent>
-                      {expenseCategories.map((category) => (
+                      {filteredCategories.map((category) => (
                         <SelectItem key={category.id} value={category.id}>
                           {category.name}
                         </SelectItem>
@@ -118,65 +151,18 @@ export default function NewBudgetPage() {
                   </Select>
                 </div>
 
-                {/* Mês */}
+                {/* Data */}
                 <div className="space-y-2">
-                  <label htmlFor="month" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Mês *
-                  </label>
-                  <Select 
-                    value={formData.month} 
-                    onValueChange={(value) => handleInputChange('month', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o mês" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {monthOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Valor Limite */}
-                <div className="space-y-2">
-                  <label htmlFor="limitAmount" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Valor Limite (R$) *
+                  <label htmlFor="transactionDate" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    Data *
                   </label>
                   <Input
-                    id="limitAmount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                    value={formData.limitAmount || ''}
-                    onChange={(e) => handleInputChange('limitAmount', parseFloat(e.target.value) || 0)}
+                    id="transactionDate"
+                    type="date"
+                    value={formData.transactionDate}
+                    onChange={(e) => handleInputChange('transactionDate', e.target.value)}
                     required
                   />
-                </div>
-
-                {/* Percentual de Alerta */}
-                <div className="space-y-2">
-                  <label htmlFor="alertPercentage" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Percentual de Alerta (%)
-                  </label>
-                  <Input
-                    id="alertPercentage"
-                    type="number"
-                    min="0"
-                    max="100"
-                    placeholder="80"
-                    value={formData.alertPercentage || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      handleInputChange('alertPercentage', value ? parseInt(value) : null)
-                    }}
-                  />
-                  <p className="text-sm text-muted-foreground">
-                    Receba um alerta quando atingir esta porcentagem do limite (opcional)
-                  </p>
                 </div>
               </div>
 
@@ -184,7 +170,7 @@ export default function NewBudgetPage() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => router.push('/budgets')}
+                  onClick={() => router.push('/transactions')}
                   disabled={loading}
                 >
                   Cancelar
@@ -193,7 +179,7 @@ export default function NewBudgetPage() {
                   type="submit" 
                   disabled={loading}
                 >
-                  {loading ? 'Criando...' : 'Criar Orçamento'}
+                  {loading ? 'Criando...' : 'Criar Transação'}
                 </Button>
               </div>
             </form>

@@ -1,193 +1,125 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { Transaction } from '@/types/database.types'
+import type { Transaction, TransactionWithCategory } from '@/types/database.types'
 
-// Defina TransactionWithDetails localmente
-interface TransactionWithDetails {
-  id: string
-  amount: number
-  card_id: string | null
-  category_id: string
-  created_at: string | null
-  description: string
-  is_recurring: boolean | null
-  notes: string | null
-  recurring_type: string | null
-  transaction_date: string
-  type: string
-  updated_at: string | null
-  user_id: string
-  category: {
-    id: string
-    name: string
-    icon: string | null
-    color: string | null
-    created_at: string | null
-    is_system: boolean | null
-    user_id: string | null
-  }
-  card?: {
-    id: string
-    name: string
-    type: string
-    brand: string | null
-    last_digits: string | null
-    limit_amount: number | null
-    is_active: boolean | null
-    created_at: string | null
-    updated_at: string | null
-    user_id: string
-  }
-}
-
-interface TransactionsState {
-  transactions: TransactionWithDetails[]
+interface TransactionsStore {
+  transactions: TransactionWithCategory[]
   loading: boolean
-  fetchTransactions: (filters?: TransactionFilters) => Promise<void>
-  addTransaction: (transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>) => Promise<{ error: string | null }>
-  updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<{ error: string | null }>
-  deleteTransaction: (id: string) => Promise<{ error: string | null }>
+  error: string | null
+  fetchTransactions: (month?: string) => Promise<void>
+  addTransaction: (transaction: {
+    description: string
+    amount: number
+    type: 'income' | 'expense'
+    category_id: string
+    transaction_date: string
+  }) => Promise<void>
+  updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>
+  deleteTransaction: (id: string) => Promise<void>
 }
 
-interface TransactionFilters {
-  startDate?: string
-  endDate?: string
-  categoryId?: string
-  cardId?: string
-  type?: string
-  search?: string
-}
-
-export const useTransactionsStore = create<TransactionsState>((set, get) => ({
+export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
   transactions: [],
   loading: false,
+  error: null,
 
-  fetchTransactions: async (filters = {}) => {
+  fetchTransactions: async (month?: string) => {
+    set({ loading: true, error: null })
     try {
-      set({ loading: true })
-      
       let query = supabase
         .from('transactions')
         .select(`
           *,
-          card:cards(*),
-          category:categories(*)
+          categories (
+            id,
+            name,
+            type
+          )
         `)
-        .order('transaction_date', { ascending: false })
 
-      // Apply filters
-      if (filters.startDate) {
-        query = query.gte('transaction_date', filters.startDate)
-      }
-      if (filters.endDate) {
-        query = query.lte('transaction_date', filters.endDate)
-      }
-      if (filters.categoryId) {
-        query = query.eq('category_id', filters.categoryId)
-      }
-      if (filters.cardId) {
-        query = query.eq('card_id', filters.cardId)
-      }
-      if (filters.type) {
-        query = query.eq('type', filters.type)
-      }
-      if (filters.search) {
-        query = query.ilike('description', `%${filters.search}%`)
+      // Se month foi fornecido, filtra por mês
+      if (month) {
+        query = query.gte('transaction_date', month).lt('transaction_date', getNextMonth(month))
       }
 
-      const { data, error } = await query
+      const { data, error } = await query.order('transaction_date', { ascending: false })
 
-      if (error) {
-        console.error('Erro ao buscar transações:', error)
-        return
-      }
-
-      set({ transactions: data || [], loading: false })
+      if (error) throw error
+      set({ transactions: data as TransactionWithCategory[] || [] })
     } catch (error) {
-      console.error('Erro inesperado ao buscar transações:', error)
+      set({ error: (error as Error).message })
+    } finally {
       set({ loading: false })
     }
   },
 
-  addTransaction: async (transactionData) => {
+  addTransaction: async (transaction: {
+    description: string
+    amount: number
+    type: 'income' | 'expense'
+    category_id: string
+    transaction_date: string
+  }) => {
     try {
       const { data, error } = await supabase
         .from('transactions')
-        .insert([transactionData])
-        .select(`
-          *,
-          card:cards(*),
-          category:categories(*)
-        `)
+        .insert([transaction])
+        .select()
         .single()
 
-      if (error) {
-        return { error: error.message }
-      }
+      if (error) throw error
 
-      // Add to local state
-      const { transactions } = get()
-      set({ transactions: [data, ...transactions] })
-
-      return { error: null }
+      set((state) => ({
+        transactions: [data, ...state.transactions]
+      }))
     } catch (error) {
-      return { error: 'Erro inesperado ao criar transação' }
+      set({ error: (error as Error).message })
+      throw error
     }
   },
 
-  updateTransaction: async (id, updates) => {
+  updateTransaction: async (id: string, updates: Partial<Transaction>) => {
     try {
       const { data, error } = await supabase
         .from('transactions')
         .update(updates)
         .eq('id', id)
-        .select(`
-          *,
-          card:cards(*),
-          category:categories(*)
-        `)
+        .select()
         .single()
 
-      if (error) {
-        return { error: error.message }
-      }
+      if (error) throw error
 
-      // Update local state
-      const { transactions } = get()
-      const updatedTransactions = transactions.map(transaction => {
-        const transactionAny = transaction as any
-        return transactionAny.id === id ? { ...transaction, ...data } : transaction
-      })
-      set({ transactions: updatedTransactions })
-
-      return { error: null }
+      set((state) => ({
+        transactions: state.transactions.map((t) => (t.id === id ? data : t))
+      }))
     } catch (error) {
-      return { error: 'Erro inesperado ao atualizar transação' }
+      set({ error: (error as Error).message })
+      throw error
     }
   },
 
-  deleteTransaction: async (id) => {
+  deleteTransaction: async (id: string) => {
     try {
       const { error } = await supabase
         .from('transactions')
         .delete()
         .eq('id', id)
 
-      if (error) {
-        return { error: error.message }
-      }
+      if (error) throw error
 
-      // Remove from local state
-      const { transactions } = get()
-      const filteredTransactions = transactions.filter(transaction => {
-        const transactionAny = transaction as any
-        return transactionAny.id !== id
-      })
-      set({ transactions: filteredTransactions })
-
-      return { error: null }
+      set((state) => ({
+        transactions: state.transactions.filter((t) => t.id !== id)
+      }))
     } catch (error) {
-      return { error: 'Erro inesperado ao deletar transação' }
+      set({ error: (error as Error).message })
+      throw error
     }
-  },
+  }
 }))
+
+// Função auxiliar para calcular o próximo mês
+function getNextMonth(month: string): string {
+  const date = new Date(month)
+  date.setMonth(date.getMonth() + 1)
+  return date.toISOString().split('T')[0]
+}
