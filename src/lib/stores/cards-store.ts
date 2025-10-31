@@ -92,7 +92,7 @@ export const useCardsStore = create<CardsState>((set, get) => ({
       // Add to local state
       // Mapeia limit_amount (do tipo Supabase) para limit (nosso tipo Card)
       const { cards } = get()
-      const cardData = data as any
+      const insertedCardData = data as any
       const newCard: Card = {
         id: data.id,
         user_id: data.user_id,
@@ -100,7 +100,7 @@ export const useCardsStore = create<CardsState>((set, get) => ({
         type: data.type,
         brand: data.brand,
         last_digits: data.last_digits,
-        limit: cardData.limit_amount ?? cardData.limit ?? null, // Mapeia de limit_amount para limit
+        limit: insertedCardData.limit_amount ?? insertedCardData.limit ?? null, // Mapeia de limit_amount para limit
         is_active: data.is_active ?? true,
         created_at: data.created_at ?? new Date().toISOString(),
         updated_at: data.updated_at ?? new Date().toISOString(),
@@ -142,7 +142,7 @@ export const useCardsStore = create<CardsState>((set, get) => ({
       // Update local state
       // Mapeia limit_amount (do tipo Supabase) para limit (nosso tipo Card)
       const { cards } = get()
-      const cardData = data as any
+      const updatedCardData = data as any
       const updatedCards: Card[] = cards.map(card => 
         card.id === id ? { 
           id: data.id,
@@ -151,7 +151,7 @@ export const useCardsStore = create<CardsState>((set, get) => ({
           type: data.type,
           brand: data.brand,
           last_digits: data.last_digits,
-          limit: cardData.limit_amount ?? cardData.limit ?? null, // Mapeia de limit_amount para limit
+          limit: updatedCardData.limit_amount ?? updatedCardData.limit ?? null, // Mapeia de limit_amount para limit
           is_active: data.is_active ?? card.is_active ?? true,
           created_at: data.created_at ?? card.created_at ?? new Date().toISOString(),
           updated_at: data.updated_at ?? new Date().toISOString(),

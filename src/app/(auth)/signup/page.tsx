@@ -46,32 +46,43 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">💰</h1>
-          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
-            Crie sua conta
-          </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Ou{' '}
-            <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
-              faça login em uma conta existente
+    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-accent/5 py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-accent/10 rounded-full blur-3xl" />
+      </div>
+      
+      <div className="max-w-md w-full space-y-8 relative z-10">
+        <header className="text-center space-y-4">
+          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-br from-primary to-accent shadow-lg shadow-primary/20 mb-2">
+            <span className="text-3xl">💰</span>
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+            Comece agora!
+          </h1>
+          <p className="text-muted-foreground">
+            Crie sua conta e comece a gerenciar suas finanças
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Já tem uma conta?{' '}
+            <Link href="/login" className="font-semibold text-primary hover:text-primary/80 transition-colors">
+              Fazer login
             </Link>
           </p>
-        </div>
+        </header>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Cadastrar</CardTitle>
+        <Card className="border-border/50 shadow-xl backdrop-blur-sm bg-card/95">
+          <CardHeader className="space-y-1 pb-6">
+            <CardTitle className="text-2xl">Cadastrar</CardTitle>
             <CardDescription>
               Preencha os dados abaixo para criar sua conta
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <label htmlFor="fullName" className="text-sm font-medium text-foreground">
                   Nome completo
                 </label>
                 <Input
@@ -80,13 +91,13 @@ export default function SignupPage() {
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
-                  className="mt-1"
+                  className="h-11 border-border/50 focus:border-primary focus:ring-primary/20"
                   placeholder="Seu nome completo"
                 />
               </div>
 
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium text-foreground">
                   Email
                 </label>
                 <Input
@@ -95,13 +106,13 @@ export default function SignupPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="mt-1"
+                  className="h-11 border-border/50 focus:border-primary focus:ring-primary/20"
                   placeholder="seu@email.com"
                 />
               </div>
 
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm font-medium text-foreground">
                   Senha
                 </label>
                 <Input
@@ -110,13 +121,13 @@ export default function SignupPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="mt-1"
+                  className="h-11 border-border/50 focus:border-primary focus:ring-primary/20"
                   placeholder="••••••••"
                 />
               </div>
 
-              <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+              <div className="space-y-2">
+                <label htmlFor="confirmPassword" className="text-sm font-medium text-foreground">
                   Confirmar senha
                 </label>
                 <Input
@@ -125,18 +136,29 @@ export default function SignupPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="mt-1"
+                  className="h-11 border-border/50 focus:border-primary focus:ring-primary/20"
                   placeholder="••••••••"
                 />
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Criando conta...' : 'Criar conta'}
+              <Button 
+                type="submit" 
+                className="w-full h-11 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md shadow-primary/20 font-semibold" 
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
+                    Criando conta...
+                  </>
+                ) : (
+                  'Criar conta'
+                )}
               </Button>
             </form>
           </CardContent>
         </Card>
       </div>
-    </div>
+    </main>
   )
 }

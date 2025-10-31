@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase'
-import type { AppUser } from '@/types/user_types' // ✅ MUDE A IMPORT
+import { createClient } from '@/lib/supabase/client'
+import type { AppUser } from '@/types/user_types'
 
 // Defina os tipos localmente
 interface DashboardKPIs {
@@ -76,6 +76,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       console.log(`📅 Período: ${start} até ${end}`)
 
       // Fetch transactions para o período
+      const supabase = createClient()
       const { data: transactions, error: transactionsError } = await supabase
         .from('transactions')
         .select(`
@@ -102,27 +103,28 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         .from('budgets')
         .select('*')
         .eq('user_id', user.id)
-        .gte('end_date', start)
         .lte('start_date', end)
+        .gte('end_date', start)
 
       if (budgetsError) {
         console.warn('Erro ao buscar orçamentos:', budgetsError)
         // Continua sem orçamentos
       }
 
-      // Buscar saldo disponível (exemplo - ajuste conforme sua estrutura)
-      const { data: accountData, error: accountError } = await supabase
-        .from('accounts')
-        .select('balance')
-        .eq('user_id', user.id)
-        .single()
-
-      if (accountError) {
-        console.warn('Erro ao buscar saldo da conta:', accountError)
-      }
-
-      // Calcular KPIs
-      const totalSpent = transactions?.reduce((sum: number, t: any) => sum + t.amount, 0) || 0
+      // Calcular KPIs diferenciando receitas e despesas
+      let totalIncome = 0
+      let totalSpent = 0
+      
+      transactions?.forEach((transaction: any) => {
+        if (transaction.type === 'income') {
+          totalIncome += transaction.amount || 0
+        } else if (transaction.type === 'expense') {
+          totalSpent += transaction.amount || 0
+        }
+      })
+      
+      // Saldo disponível = Receitas - Despesas (calculado a partir das transações)
+      const availableBalance = totalIncome - totalSpent
       
       const startDateObj = new Date(start)
       const endDateObj = new Date(end)
@@ -139,10 +141,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const totalBudget = budgets?.reduce((sum: number, b: any) => sum + b.amount, 0) || 0
       const budgetUsedPercentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
 
-      // Calcular saldo disponível
-      const availableBalance = accountData?.balance || 0
-
-      // Calcular dias de reserva
+      // Calcular dias de reserva (baseado no saldo disponível vs média diária de despesas)
       const daysOfReserve = dailyAverage > 0 ? Math.floor(availableBalance / dailyAverage) : 0
 
       const kpis: DashboardKPIs = {
@@ -165,11 +164,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         currentDate.setDate(currentDate.getDate() + 1)
       }
 
-      // Adicionar valores reais das transações
+      // Adicionar valores reais das transações (apenas despesas para o gráfico de gastos)
       transactions?.forEach((transaction: any) => {
-        const date = transaction.transaction_date
-        const current = timeSeriesMap.get(date) || 0
-        timeSeriesMap.set(date, current + transaction.amount)
+        if (transaction.type === 'expense') {
+          const date = transaction.transaction_date
+          const current = timeSeriesMap.get(date) || 0
+          timeSeriesMap.set(date, current + (transaction.amount || 0))
+        }
       })
 
       const timeSeriesData: TimeSeriesData[] = Array.from(timeSeriesMap.entries())
@@ -180,12 +181,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           label: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
         }))
 
-      // Gerar dados de categoria
+      // Gerar dados de categoria (apenas despesas)
       const categoryMap = new Map<string, number>()
       transactions?.forEach((transaction: any) => {
-        const categoryName = transaction.category?.name || 'Sem Categoria'
-        const current = categoryMap.get(categoryName) || 0
-        categoryMap.set(categoryName, current + transaction.amount)
+        if (transaction.type === 'expense') {
+          const categoryName = transaction.category?.name || 'Sem Categoria'
+          const current = categoryMap.get(categoryName) || 0
+          categoryMap.set(categoryName, current + (transaction.amount || 0))
+        }
       })
 
       const categoryData: ChartData[] = Array.from(categoryMap.entries())
@@ -196,10 +199,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         }))
         .sort((a, b) => b.value - a.value) // Ordenar por valor decrescente
 
-      // Pegar top 5 transações
+      // Pegar top 5 transações (ordenado por valor absoluto)
       const topTransactions = transactions
-        ?.filter((t: any) => t.amount > 0) // Apenas transações com valor positivo
-        .sort((a: any, b: any) => b.amount - a.amount)
+        ?.filter((t: any) => t.amount && Math.abs(t.amount) > 0) // Apenas transações com valor válido
+        .sort((a: any, b: any) => Math.abs(b.amount) - Math.abs(a.amount))
         .slice(0, 5)
         .map((transaction: any) => ({
           ...transaction,
@@ -208,6 +211,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       console.log('✅ Dashboard: Dados carregados com sucesso')
       console.log(`📈 KPIs: ${transactions?.length || 0} transações processadas`)
+      console.log(`💰 Receitas: R$ ${totalIncome.toFixed(2)} | Despesas: R$ ${totalSpent.toFixed(2)} | Saldo: R$ ${availableBalance.toFixed(2)}`)
 
       set({
         kpis,

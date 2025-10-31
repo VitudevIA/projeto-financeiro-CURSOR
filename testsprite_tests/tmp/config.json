@@ -1,0 +1,17 @@
+{
+  "status": "commited",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:3000",
+  "loginUser": "victormatheuss669@gmail.com",
+  "loginPassword": "12345678",
+  "executionArgs": {
+    "projectName": "projeto-financeiro-CURSOR",
+    "projectPath": "D:\\Users\\User\\projeto-financeiro-CURSOR",
+    "testIds": [],
+    "additionalInstruction": "",
+    "envs": {
+      "API_KEY": "sk-user-YNGvb0ZcvSXoHWryNRuAMYvI20_LW8_tKLfqupgUgw0DKSQJ1tBSSQ2vOL74o-DGm9VYkdVUqaao3GNZ_TB_RGg2dwrNl4GL2K2folSJ4Y2sBBssGwwHhwHFAIfT57tEQG0"
+    }
+  }
+}

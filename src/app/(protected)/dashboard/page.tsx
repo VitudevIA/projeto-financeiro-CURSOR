@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useDashboardStore } from '@/lib/stores/dashboard-store'
 import { formatCurrency } from '@/utils/helpers'
-import { Plus, TrendingUp, TrendingDown, DollarSign, Calendar, Target, LogOut } from 'lucide-react'
+import { Plus, TrendingUp, TrendingDown, DollarSign, Calendar, Target, Receipt } from 'lucide-react'
 import Link from 'next/link'
 import TimeSeriesChart from '@/components/charts/time-series-chart'
 import PieChartComponent from '@/components/charts/pie-chart'
 import BarChartComponent from '@/components/charts/bar-chart'
 import InsightsCard from '@/components/insights/insights-card'
 import { useUserDataSync } from '@/hooks/useUserDataSync'
+import { cn } from '@/lib/utils'
 
 export default function DashboardPage() {
   const { user, signOut } = useAuthStore()
@@ -121,50 +122,77 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header Moderno */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600">Bem-vindo, {user?.full_name || 'Usuário'}!</p>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+            Dashboard
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Olá, <span className="font-semibold text-foreground">{user?.full_name || 'Usuário'}</span>! 👋
+          </p>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-2">
           <Link href="/transactions/new">
-            <Button>
+            <Button className="bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-md shadow-primary/20">
               <Plus className="mr-2 h-4 w-4" />
               Nova Transação
             </Button>
           </Link>
           <Link href="/cards/new">
-            <Button variant="outline">
+            <Button variant="outline" className="border-primary/20 hover:bg-primary/5">
               <Plus className="mr-2 h-4 w-4" />
               Novo Cartão
             </Button>
           </Link>
-          {/* Botão de Logout */}
-          <Button onClick={handleSignOut} variant="outline">
-            <LogOut className="mr-2 h-4 w-4" />
-            Sair
-          </Button>
         </div>
       </div>
 
-      {/* KPIs Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* KPIs Grid Moderno */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
         {kpiCards.map((kpi, index) => {
           const Icon = kpi.icon
+          const isPrimary = index === 0 || index === 2 // Saldo e Total Gasto destacados
           return (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">
+            <Card 
+              key={index}
+              className={cn(
+                "relative overflow-hidden transition-all duration-300",
+                isPrimary 
+                  ? "border-2 border-primary/20 bg-gradient-to-br from-card via-card to-primary/5 shadow-lg shadow-primary/10" 
+                  : "hover:shadow-md"
+              )}
+            >
+              {isPrimary && (
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-bl-full" />
+              )}
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 relative z-10">
+                <CardTitle className="text-sm font-medium text-muted-foreground">
                   {kpi.title}
                 </CardTitle>
-                <Icon className={`h-4 w-4 ${kpi.color}`} />
+                <div className={cn(
+                  "p-2 rounded-lg",
+                  index === 0 ? "bg-destructive/10 text-destructive" :
+                  index === 1 ? "bg-primary/10 text-primary" :
+                  index === 2 ? "bg-success/10 text-success" :
+                  index === 3 ? "bg-warning/10 text-warning" :
+                  "bg-accent/10 text-accent"
+                )}>
+                  <Icon className="h-5 w-5" />
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className={`text-2xl font-bold ${kpi.color}`}>
+              <CardContent className="relative z-10">
+                <div className={cn(
+                  "text-3xl font-bold mb-1",
+                  index === 0 ? "text-destructive" :
+                  index === 1 ? "text-primary" :
+                  index === 2 ? "text-success" :
+                  index === 3 ? "text-warning" :
+                  "text-accent"
+                )}>
                   {kpi.value}
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground">
                   {kpi.description}
                 </p>
               </CardContent>
@@ -173,41 +201,57 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Charts Section */}
+      {/* Charts Section Moderna */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Evolution Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Evolução dos Gastos</CardTitle>
-            <CardDescription>
-              Gastos diários do mês atual
-            </CardDescription>
+        <Card className="border-border/50 shadow-md">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">Evolução dos Gastos</CardTitle>
+                <CardDescription className="mt-1">
+                  Gastos diários do mês atual
+                </CardDescription>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <TrendingUp className="h-5 w-5 text-primary" />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {timeSeriesData.length > 0 ? (
               <TimeSeriesChart data={timeSeriesData} />
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                Nenhum dado de gastos disponível
+              <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
+                <TrendingUp className="h-12 w-12 mb-3 opacity-50" />
+                <p>Nenhum dado de gastos disponível</p>
               </div>
             )}
           </CardContent>
         </Card>
 
         {/* Category Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribuição por Categoria</CardTitle>
-            <CardDescription>
-              Gastos por categoria no mês
-            </CardDescription>
+        <Card className="border-border/50 shadow-md">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">Distribuição por Categoria</CardTitle>
+                <CardDescription className="mt-1">
+                  Gastos por categoria no mês
+                </CardDescription>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                <Target className="h-5 w-5 text-accent" />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {categoryData.length > 0 ? (
               <PieChartComponent data={categoryData} />
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                Nenhum dado de categoria disponível
+              <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
+                <Target className="h-12 w-12 mb-3 opacity-50" />
+                <p>Nenhum dado de categoria disponível</p>
               </div>
             )}
           </CardContent>
@@ -217,56 +261,81 @@ export default function DashboardPage() {
       {/* Additional Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Categories Bar Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Categorias</CardTitle>
-            <CardDescription>
-              Categorias com maiores gastos
-            </CardDescription>
+        <Card className="border-border/50 shadow-md">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">Top Categorias</CardTitle>
+                <CardDescription className="mt-1">
+                  Categorias com maiores gastos
+                </CardDescription>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                <Target className="h-5 w-5 text-accent" />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {categoryData.length > 0 ? (
               <BarChartComponent data={categoryData.slice(0, 5)} />
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                Nenhum dado de categoria disponível
+              <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
+                <Target className="h-12 w-12 mb-3 opacity-50" />
+                <p>Nenhum dado de categoria disponível</p>
               </div>
             )}
           </CardContent>
         </Card>
 
         {/* Top Transactions */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top 5 Transações</CardTitle>
-            <CardDescription>
-              Maiores gastos do período
-            </CardDescription>
+        <Card className="border-border/50 shadow-md">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-lg">Top 5 Transações</CardTitle>
+                <CardDescription className="mt-1">
+                  Maiores gastos do período
+                </CardDescription>
+              </div>
+              <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
+                <Receipt className="h-5 w-5 text-warning" />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {topTransactions.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {topTransactions.map((transaction, index) => (
-                  <div key={transaction.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-sm font-medium text-blue-600">#{index + 1}</span>
+                  <div 
+                    key={transaction.id} 
+                    className="flex items-center justify-between p-4 border border-border/50 rounded-xl hover:bg-muted/50 transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shadow-sm",
+                        index === 0 ? "bg-gradient-to-br from-warning to-warning/80 text-warning-foreground" :
+                        index === 1 ? "bg-gradient-to-br from-muted to-muted/80 text-foreground" :
+                        index === 2 ? "bg-gradient-to-br from-muted/80 to-muted/60 text-foreground" :
+                        "bg-muted/60 text-muted-foreground"
+                      )}>
+                        #{index + 1}
                       </div>
                       <div>
-                        <p className="font-medium text-gray-900">{transaction.description}</p>
-                        <p className="text-sm text-gray-500">{transaction.category.name}</p>
+                        <p className="font-semibold text-foreground">{transaction.description}</p>
+                        <p className="text-xs text-muted-foreground">{transaction.category.name}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-gray-900">{formatCurrency(transaction.amount)}</p>
-                      <p className="text-sm text-gray-500">{new Date(transaction.transaction_date).toLocaleDateString('pt-BR')}</p>
+                      <p className="font-bold text-destructive">{formatCurrency(transaction.amount)}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(transaction.transaction_date).toLocaleDateString('pt-BR')}</p>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
-                Nenhuma transação encontrada
+              <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
+                <Receipt className="h-12 w-12 mb-3 opacity-50" />
+                <p>Nenhuma transação encontrada</p>
               </div>
             )}
           </CardContent>
@@ -277,19 +346,29 @@ export default function DashboardPage() {
       <InsightsCard />
 
       {/* Recent Transactions */}
-      <Card>
+      <Card className="border-border/50 shadow-md">
         <CardHeader>
-          <CardTitle>Transações Recentes</CardTitle>
-          <CardDescription>
-            Últimas transações registradas
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg">Transações Recentes</CardTitle>
+              <CardDescription className="mt-1">
+                Últimas transações registradas
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="text-center text-gray-500 py-8">
-              Nenhuma transação encontrada. 
-              <Link href="/transactions/new" className="text-blue-600 hover:text-blue-500 ml-1">
-                Adicione sua primeira transação
+            <div className="text-center py-12">
+              <Receipt className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
+              <p className="text-muted-foreground mb-2">
+                Nenhuma transação encontrada.
+              </p>
+              <Link href="/transactions/new">
+                <Button variant="outline" className="mt-2 border-primary/20 hover:bg-primary/5">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Adicione sua primeira transação
+                </Button>
               </Link>
             </div>
           </div>

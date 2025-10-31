@@ -14,14 +14,40 @@ export type Database = {
   }
   public: {
     Tables: {
+      accounts: {
+        Row: {
+          balance: number | null
+          created_at: string | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          balance?: number | null
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          balance?: number | null
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       budgets: {
         Row: {
           alert_percentage: number | null
           category_id: string
           created_at: string | null
+          end_date: string | null
           id: string
           limit_amount: number
           month: string
+          start_date: string | null
           updated_at: string | null
           user_id: string
         }
@@ -29,9 +55,11 @@ export type Database = {
           alert_percentage?: number | null
           category_id: string
           created_at?: string | null
+          end_date?: string | null
           id?: string
           limit_amount: number
           month: string
+          start_date?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -39,9 +67,11 @@ export type Database = {
           alert_percentage?: number | null
           category_id?: string
           created_at?: string | null
+          end_date?: string | null
           id?: string
           limit_amount?: number
           month?: string
+          start_date?: string | null
           updated_at?: string | null
           user_id?: string
         }
@@ -69,7 +99,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           last_digits: string | null
-          limit_amount: number | null
+          limit: number | null
           name: string
           type: string
           updated_at: string | null
@@ -81,7 +111,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_digits?: string | null
-          limit_amount?: number | null
+          limit?: number | null
           name: string
           type: string
           updated_at?: string | null
@@ -93,7 +123,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           last_digits?: string | null
-          limit_amount?: number | null
+          limit?: number | null
           name?: string
           type?: string
           updated_at?: string | null
@@ -117,6 +147,7 @@ export type Database = {
           id: string
           is_system: boolean | null
           name: string
+          type: string | null
           user_id: string | null
         }
         Insert: {
@@ -126,6 +157,7 @@ export type Database = {
           id?: string
           is_system?: boolean | null
           name: string
+          type?: string | null
           user_id?: string | null
         }
         Update: {
@@ -135,6 +167,7 @@ export type Database = {
           id?: string
           is_system?: boolean | null
           name?: string
+          type?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -192,11 +225,14 @@ export type Database = {
           category_id: string
           created_at: string | null
           description: string
+          expense_nature: string | null
           id: string
+          installment_number: number | null
           is_recurring: boolean | null
           notes: string | null
-          recurring_type: string | null
           payment_method: string
+          recurring_type: string | null
+          total_installments: number | null
           transaction_date: string
           type: string
           updated_at: string | null
@@ -208,11 +244,14 @@ export type Database = {
           category_id: string
           created_at?: string | null
           description: string
+          expense_nature?: string | null
           id?: string
+          installment_number?: number | null
           is_recurring?: boolean | null
           notes?: string | null
-          recurring_type?: string | null
           payment_method?: string
+          recurring_type?: string | null
+          total_installments?: number | null
           transaction_date: string
           type: string
           updated_at?: string | null
@@ -224,11 +263,14 @@ export type Database = {
           category_id?: string
           created_at?: string | null
           description?: string
+          expense_nature?: string | null
           id?: string
+          installment_number?: number | null
           is_recurring?: boolean | null
           notes?: string | null
-          recurring_type?: string | null
           payment_method?: string
+          recurring_type?: string | null
+          total_installments?: number | null
           transaction_date?: string
           type?: string
           updated_at?: string | null
@@ -257,6 +299,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_preferences: {
+        Row: {
+          dashboard_data: Json
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          dashboard_data?: Json
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          dashboard_data?: Json
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       users: {
         Row: {
