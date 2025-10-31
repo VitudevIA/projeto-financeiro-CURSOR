@@ -74,17 +74,29 @@ export default function NewTransactionPage() {
           const installmentDate = new Date(formData.transactionDate)
           installmentDate.setMonth(installmentDate.getMonth() + i)
 
+          // Garante que o tipo seja sempre 'income' ou 'expense'
+          const validatedType: 'income' | 'expense' = 
+            (formData.type === 'income' || formData.type === 'expense') 
+              ? formData.type 
+              : 'expense'
+
+          // Garante que o payment_method seja válido
+          const validPaymentMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
+          const validatedPaymentMethod = validPaymentMethods.includes(formData.paymentMethod)
+            ? formData.paymentMethod
+            : 'cash'
+
           const transactionData = {
             description: `${formData.description} (${i + 1}/${installmentCount})`,
             amount: installmentAmount,
-            type: formData.type,
+            type: validatedType, // ✅ Tipo validado antes de enviar
             category_id: formData.categoryId,
             transaction_date: installmentDate.toISOString().split('T')[0],
             expense_nature: formData.expenseNature || null,
             installment_number: i + 1,
             total_installments: installmentCount,
-            payment_method: formData.paymentMethod,
-            card_id: (formData.paymentMethod === 'credit' || formData.paymentMethod === 'debit') ? cardId : null
+            payment_method: validatedPaymentMethod, // ✅ Payment method validado
+            card_id: (validatedPaymentMethod === 'credit' || validatedPaymentMethod === 'debit') ? cardId : null
           }
 
           try {
@@ -109,17 +121,29 @@ export default function NewTransactionPage() {
         }
       } else {
         // Criar transação única
+        // Garante que o tipo seja sempre 'income' ou 'expense'
+        const validatedType: 'income' | 'expense' = 
+          (formData.type === 'income' || formData.type === 'expense') 
+            ? formData.type 
+            : 'expense'
+
+        // Garante que o payment_method seja válido
+        const validPaymentMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
+        const validatedPaymentMethod = validPaymentMethods.includes(formData.paymentMethod)
+          ? formData.paymentMethod
+          : 'cash'
+
         const transactionData = {
           description: formData.description,
           amount: formData.amount,
-          type: formData.type,
+          type: validatedType, // ✅ Tipo validado antes de enviar
           category_id: formData.categoryId,
           transaction_date: formData.transactionDate,
           expense_nature: formData.expenseNature || null,
           installment_number: null,
           total_installments: null,
-          payment_method: formData.paymentMethod,
-          card_id: (formData.paymentMethod === 'credit' || formData.paymentMethod === 'debit') ? cardId : null
+          payment_method: validatedPaymentMethod, // ✅ Payment method validado
+          card_id: (validatedPaymentMethod === 'credit' || validatedPaymentMethod === 'debit') ? cardId : null
         }
 
         await addTransaction(transactionData as any)

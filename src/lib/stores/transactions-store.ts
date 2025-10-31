@@ -144,14 +144,24 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
         notes = transaction.expense_nature
       }
 
+      // Garante que o tipo seja sempre 'income' ou 'expense' (conforme constraint do banco)
+      const validatedType = (transaction.type === 'income' || transaction.type === 'expense') 
+        ? transaction.type 
+        : 'expense'
+
+      // Garante que o payment_method seja válido
+      const validatedPaymentMethod = (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(transaction.payment_method || ''))
+        ? transaction.payment_method
+        : 'cash'
+
       const insertData: any = {
         description: transaction.description,
         amount: transaction.amount,
-        type: transaction.type,
+        type: validatedType, // ✅ Garantia de tipo válido para o banco
         category_id: transaction.category_id,
         transaction_date: transaction.transaction_date,
         user_id: userId,
-        payment_method: transaction.payment_method || 'cash',
+        payment_method: validatedPaymentMethod,
         card_id: transaction.card_id || null,
         notes: notes,
       }
