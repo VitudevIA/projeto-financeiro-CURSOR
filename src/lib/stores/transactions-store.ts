@@ -145,19 +145,24 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
       }
 
       // Garante que o tipo seja sempre 'income' ou 'expense' (conforme constraint do banco)
-      const validatedType = (transaction.type === 'income' || transaction.type === 'expense') 
-        ? transaction.type 
-        : 'expense'
+      // Remove espaços, converte para lowercase e valida rigorosamente
+      const rawType = String(transaction.type || '').trim().toLowerCase()
+      const validatedType: 'income' | 'expense' = 
+        (rawType === 'income' || rawType === 'expense') 
+          ? rawType as 'income' | 'expense'
+          : 'expense'
 
       // Garante que o payment_method seja válido
-      const validatedPaymentMethod = (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(transaction.payment_method || ''))
-        ? transaction.payment_method
+      const rawPaymentMethod = String(transaction.payment_method || '').trim().toLowerCase()
+      const validPaymentMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
+      const validatedPaymentMethod = validPaymentMethods.includes(rawPaymentMethod)
+        ? rawPaymentMethod as PaymentMethod
         : 'cash'
 
       const insertData: any = {
         description: transaction.description,
         amount: transaction.amount,
-        type: validatedType, // ✅ Garantia de tipo válido para o banco
+        type: validatedType, // ✅ Tipo validado e garantido
         category_id: transaction.category_id,
         transaction_date: transaction.transaction_date,
         user_id: userId,
@@ -165,6 +170,14 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
         card_id: transaction.card_id || null,
         notes: notes,
       }
+
+      // Log para debug (remover em produção se necessário)
+      console.log('Inserting transaction:', {
+        type: validatedType,
+        payment_method: validatedPaymentMethod,
+        typeOriginal: transaction.type,
+        typeRaw: rawType
+      })
 
       const { data, error } = await supabase
         .from('transactions')

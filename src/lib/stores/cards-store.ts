@@ -5,8 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 interface Card {
   id: string
   user_id: string
-  limit_amount: number | null  // ✅ CORRETO: 'limit_amount' conforme banco de dados
-  limit?: number | null        // Mantido para compatibilidade
+  limit: number | null  // ✅ CORRETO: a tabela usa 'limit', não 'limit_amount'
   is_active: boolean
   created_at: string | null   // Pode ser null do banco
   updated_at: string | null    // Pode ser null do banco
@@ -45,16 +44,16 @@ export const useCardsStore = create<CardsState>((set, get) => ({
         return
       }
 
-      // Mapeia limit_amount para limit para compatibilidade com o código existente
-      const cardsWithLimit: Card[] = (data || []).map((card: any): Card => ({
+      // Garante valores padrão corretos
+      const cardsWithDefaults: Card[] = (data || []).map((card: any): Card => ({
         ...card,
-        limit: card.limit_amount ?? null, // Adiciona 'limit' para compatibilidade
+        limit: card.limit ?? null, // A tabela já usa 'limit'
         is_active: card.is_active ?? true, // Garante que sempre seja boolean (default true)
         created_at: card.created_at ?? new Date().toISOString(),
         updated_at: card.updated_at ?? new Date().toISOString(),
       }))
 
-      set({ cards: cardsWithLimit, loading: false })
+      set({ cards: cardsWithDefaults, loading: false })
     } catch (error) {
       console.error('Erro inesperado ao buscar cartões:', error)
       set({ loading: false })
@@ -65,12 +64,16 @@ export const useCardsStore = create<CardsState>((set, get) => ({
     try {
       const supabase = createClient()
       
-      // Mapeia 'limit' para 'limit_amount' conforme a estrutura do banco
-      const insertData: any = {
-        ...cardData,
-        limit_amount: (cardData as any).limit || null,
+      // Remove limit_amount se existir e garante que use 'limit'
+      const insertData: any = { ...cardData }
+      if ('limit_amount' in insertData) {
+        insertData.limit = insertData.limit_amount
+        delete insertData.limit_amount
       }
-      delete insertData.limit // Remove 'limit' se existir
+      // Garante que 'limit' seja null para cartões de débito
+      if (insertData.type === 'debit') {
+        insertData.limit = null
+      }
       
       const { data, error } = await supabase
         .from('cards')
@@ -79,22 +82,24 @@ export const useCardsStore = create<CardsState>((set, get) => ({
         .single()
 
       if (error) {
+        console.error('Erro ao inserir cartão:', error, 'Data:', insertData)
         return { error: error.message }
       }
 
-      // Add to local state - mapeia limit_amount para limit para compatibilidade
+      // Add to local state
       const { cards } = get()
-      const cardWithLimit: Card = {
+      const newCard: Card = {
         ...data,
-        limit: data.limit_amount ?? null, // Adiciona 'limit' para compatibilidade
-        is_active: data.is_active ?? true, // Garante que sempre seja boolean (default true)
+        limit: data.limit ?? null,
+        is_active: data.is_active ?? true,
         created_at: data.created_at ?? new Date().toISOString(),
         updated_at: data.updated_at ?? new Date().toISOString(),
       }
-      set({ cards: [cardWithLimit, ...cards] })
+      set({ cards: [newCard, ...cards] })
 
       return { error: null }
     } catch (error) {
+      console.error('Erro inesperado ao criar cartão:', error)
       return { error: 'Erro inesperado ao criar cartão' }
     }
   },
@@ -103,11 +108,11 @@ export const useCardsStore = create<CardsState>((set, get) => ({
     try {
       const supabase = createClient()
       
-      // Mapeia 'limit' para 'limit_amount' se existir
+      // Remove limit_amount se existir e garante que use 'limit'
       const updateData: any = { ...updates }
-      if ('limit' in updateData) {
-        updateData.limit_amount = updateData.limit
-        delete updateData.limit
+      if ('limit_amount' in updateData) {
+        updateData.limit = updateData.limit_amount
+        delete updateData.limit_amount
       }
       
       const { data, error } = await supabase
@@ -118,17 +123,18 @@ export const useCardsStore = create<CardsState>((set, get) => ({
         .single()
 
       if (error) {
+        console.error('Erro ao atualizar cartão:', error)
         return { error: error.message }
       }
 
-      // Update local state - mapeia limit_amount para limit
+      // Update local state
       const { cards } = get()
       const updatedCards: Card[] = cards.map(card => 
         card.id === id ? { 
           ...card, 
           ...data, 
-          limit: data.limit_amount ?? null,
-          is_active: data.is_active ?? card.is_active ?? true, // Garante boolean
+          limit: data.limit ?? null,
+          is_active: data.is_active ?? card.is_active ?? true,
           created_at: data.created_at ?? card.created_at ?? new Date().toISOString(),
           updated_at: data.updated_at ?? new Date().toISOString(),
         } : card
@@ -137,6 +143,7 @@ export const useCardsStore = create<CardsState>((set, get) => ({
 
       return { error: null }
     } catch (error) {
+      console.error('Erro inesperado ao atualizar cartão:', error)
       return { error: 'Erro inesperado ao atualizar cartão' }
     }
   },

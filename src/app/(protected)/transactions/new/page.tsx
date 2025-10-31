@@ -75,15 +75,18 @@ export default function NewTransactionPage() {
           installmentDate.setMonth(installmentDate.getMonth() + i)
 
           // Garante que o tipo seja sempre 'income' ou 'expense'
+          // Remove espaços, converte para lowercase e valida rigorosamente
+          const rawType = String(formData.type || '').trim().toLowerCase()
           const validatedType: 'income' | 'expense' = 
-            (formData.type === 'income' || formData.type === 'expense') 
-              ? formData.type 
+            (rawType === 'income' || rawType === 'expense') 
+              ? rawType as 'income' | 'expense'
               : 'expense'
 
           // Garante que o payment_method seja válido
+          const rawPaymentMethod = String(formData.paymentMethod || '').trim().toLowerCase()
           const validPaymentMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
-          const validatedPaymentMethod = validPaymentMethods.includes(formData.paymentMethod)
-            ? formData.paymentMethod
+          const validatedPaymentMethod = validPaymentMethods.includes(rawPaymentMethod)
+            ? rawPaymentMethod as 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
             : 'cash'
 
           const transactionData = {
@@ -122,15 +125,18 @@ export default function NewTransactionPage() {
       } else {
         // Criar transação única
         // Garante que o tipo seja sempre 'income' ou 'expense'
+        // Remove espaços, converte para lowercase e valida rigorosamente
+        const rawType = String(formData.type || '').trim().toLowerCase()
         const validatedType: 'income' | 'expense' = 
-          (formData.type === 'income' || formData.type === 'expense') 
-            ? formData.type 
+          (rawType === 'income' || rawType === 'expense') 
+            ? rawType as 'income' | 'expense'
             : 'expense'
 
         // Garante que o payment_method seja válido
+        const rawPaymentMethod = String(formData.paymentMethod || '').trim().toLowerCase()
         const validPaymentMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
-        const validatedPaymentMethod = validPaymentMethods.includes(formData.paymentMethod)
-          ? formData.paymentMethod
+        const validatedPaymentMethod = validPaymentMethods.includes(rawPaymentMethod)
+          ? rawPaymentMethod as 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
           : 'cash'
 
         const transactionData = {

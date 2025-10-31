@@ -102,7 +102,7 @@ export default function NewCardPage() {
         type: formData.type,
         brand: formData.brand || null,
         last_digits: normalizedDigits || null,
-        limit_amount: formData.type === 'credit' ? formData.limit : null,
+        limit: formData.type === 'credit' ? formData.limit : null, // ✅ Usa 'limit', não 'limit_amount'
         user_id: user.id,
         is_active: true,
       }
