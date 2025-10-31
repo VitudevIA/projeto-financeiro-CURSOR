@@ -70,7 +70,24 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
       const { data, error } = await query.order('transaction_date', { ascending: false })
 
       if (error) throw error
-      set({ transactions: (data as Transaction[]) || [] })
+      
+      // Garante que os tipos sejam corretos conforme a interface Transaction
+      const typedTransactions: Transaction[] = (data || []).map((item: any): Transaction => ({
+        id: item.id,
+        user_id: item.user_id,
+        category_id: item.category_id,
+        amount: item.amount,
+        description: item.description,
+        transaction_date: item.transaction_date,
+        type: (item.type === 'income' || item.type === 'expense') ? item.type : 'expense',
+        payment_method: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(item.payment_method || ''))
+          ? item.payment_method as PaymentMethod
+          : 'cash',
+        created_at: item.created_at || new Date().toISOString(),
+        updated_at: item.updated_at || null,
+      }))
+      
+      set({ transactions: typedTransactions })
     } catch (error) {
       set({ error: (error as Error).message })
     } finally {
@@ -150,8 +167,17 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
         throw error
       }
 
+      // Garante que o tipo seja correto (income | expense)
+      const newTransaction: Transaction = {
+        ...data,
+        type: (data.type === 'income' || data.type === 'expense') ? data.type : 'expense',
+        payment_method: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(data.payment_method || ''))
+          ? data.payment_method as PaymentMethod
+          : 'cash',
+      } as Transaction
+
       set((state) => ({
-        transactions: [data as Transaction, ...state.transactions],
+        transactions: [newTransaction, ...state.transactions],
         loading: false
       }))
     } catch (error) {
@@ -173,8 +199,17 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
 
       if (error) throw error
 
+      // Garante que o tipo seja correto (income | expense)
+      const updatedTransaction: Transaction = {
+        ...data,
+        type: (data.type === 'income' || data.type === 'expense') ? data.type : 'expense',
+        payment_method: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(data.payment_method || ''))
+          ? data.payment_method as PaymentMethod
+          : 'cash',
+      } as Transaction
+
       set((state) => ({
-        transactions: state.transactions.map((t) => (t.id === id ? data : t))
+        transactions: state.transactions.map((t) => (t.id === id ? updatedTransaction : t))
       }))
     } catch (error) {
       set({ error: (error as Error).message })
