@@ -11,9 +11,10 @@ import { useAuthStore } from '@/lib/stores/auth-store'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
 import { useCardsStore } from '@/lib/stores/cards-store'
 import { useBudgetsStore } from '@/lib/stores/budgets-store'
+import { useCategoriesStore } from '@/lib/stores/categories-store'
 import CategoriesManagement from '@/components/forms/categories-management'
 import { exportToJSON, generateFilename } from '@/utils/export-utils'
-import { User, CreditCard, Palette, Shield, Trash2, Download, Moon, Sun } from 'lucide-react'
+import { User, CreditCard, Palette, Shield, Trash2, Download, Moon, Sun, Plus, Edit, X } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
@@ -24,15 +25,23 @@ export default function SettingsPage() {
   const { transactions, fetchTransactions } = useTransactionsStore()
   const { cards, fetchCards } = useCardsStore()
   const { budgets, fetchBudgets } = useBudgetsStore()
+  const { categories, loading: categoriesLoading, fetchCategories, deleteCategory } = useCategoriesStore()
   const [fullName, setFullName] = useState(user?.full_name || '')
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<any>(null)
   const isDarkMode = theme === 'dark'
 
   // Prevenir hydration mismatch
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Carregar categorias quando a aba for acessada
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
 
   const handleProfileUpdate = async () => {
     if (fullName) {
@@ -120,6 +129,31 @@ export default function SettingsPage() {
     toast.success(checked ? 'Modo escuro ativado' : 'Modo claro ativado')
   }
 
+  const handleOpenCategoryDialog = (category?: any) => {
+    setEditingCategory(category || null)
+    setIsCategoryDialogOpen(true)
+  }
+
+  const handleCloseCategoryDialog = () => {
+    setIsCategoryDialogOpen(false)
+    setEditingCategory(null)
+    fetchCategories()
+  }
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir a categoria "${name}"?`)) {
+      return
+    }
+
+    const { error } = await deleteCategory(id)
+    if (error) {
+      toast.error(error)
+    } else {
+      toast.success('Categoria excluída com sucesso!')
+      fetchCategories()
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -204,18 +238,96 @@ export default function SettingsPage() {
         <TabsContent value="categories">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center">
-                <CreditCard className="mr-2 h-5 w-5" />
-                Gerenciar Categorias
-              </CardTitle>
-              <CardDescription>
-                Adicione, edite ou remova categorias de transações
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center">
+                    <CreditCard className="mr-2 h-5 w-5" />
+                    Gerenciar Categorias
+                  </CardTitle>
+                  <CardDescription>
+                    Adicione, edite ou remova categorias de transações
+                  </CardDescription>
+                </div>
+                <Button onClick={() => handleOpenCategoryDialog()}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nova Categoria
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <CategoriesManagement />
+              {categoriesLoading ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  Carregando categorias...
+                </div>
+              ) : categories.length === 0 ? (
+                <div className="text-center py-8">
+                  <CreditCard className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+                  <p className="text-muted-foreground mb-4">
+                    Nenhuma categoria cadastrada
+                  </p>
+                  <Button onClick={() => handleOpenCategoryDialog()}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Criar Primeira Categoria
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {categories.map((category) => {
+                    const categoryWithExtras = category as any
+                    return (
+                      <div
+                        key={category.id}
+                        className="flex items-center justify-between p-4 border border-border/50 rounded-xl hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          {categoryWithExtras.color && (
+                            <div
+                              className="h-4 w-4 rounded-full"
+                              style={{ backgroundColor: categoryWithExtras.color }}
+                            />
+                          )}
+                          <div>
+                            <p className="font-semibold text-foreground">
+                              {category.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {category.type === 'income' ? 'Receita' : 'Despesa'}
+                              {categoryWithExtras.is_system && ' • Sistema'}
+                            </p>
+                          </div>
+                        </div>
+                        {!categoryWithExtras.is_system && (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenCategoryDialog(category)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteCategory(category.id, category.name)}
+                            >
+                              <X className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
+
+          {/* Dialog de Categorias */}
+          <CategoriesManagement
+            isOpen={isCategoryDialogOpen}
+            onClose={handleCloseCategoryDialog}
+            editingCategory={editingCategory}
+          />
         </TabsContent>
 
         {/* Appearance Tab - Toggle Dark Mode */}
