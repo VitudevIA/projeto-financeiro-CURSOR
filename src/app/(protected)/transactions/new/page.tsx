@@ -63,6 +63,7 @@ export default function NewTransactionPage() {
 
     try {
       const installmentCount = formData.installments || 1
+      const errors: string[] = []
 
       if (installmentCount > 1) {
         // Criar transações parceladas
@@ -79,7 +80,7 @@ export default function NewTransactionPage() {
             type: formData.type,
             category_id: formData.categoryId,
             transaction_date: installmentDate.toISOString().split('T')[0],
-            expense_nature: formData.expenseNature,
+            expense_nature: formData.expenseNature || null,
             installment_number: i + 1,
             total_installments: installmentCount,
             payment_method: formData.paymentMethod,
@@ -90,11 +91,22 @@ export default function NewTransactionPage() {
             await addTransaction(transactionData as any)
             createdCount++
           } catch (error) {
-            toast.error(`Erro ao criar parcela ${i + 1}: ${(error as Error).message}`)
+            const errorMsg = (error as Error).message || 'Erro desconhecido'
+            console.error(`Erro ao criar parcela ${i + 1}:`, error)
+            errors.push(`Parcela ${i + 1}: ${errorMsg}`)
+            toast.error(`Erro ao criar parcela ${i + 1}: ${errorMsg}`)
           }
         }
 
-        toast.success(`${createdCount} parcelas criadas com sucesso!`)
+        if (createdCount > 0) {
+          toast.success(`${createdCount} de ${installmentCount} parcelas criadas com sucesso!`)
+          if (errors.length > 0) {
+            console.error('Erros ao criar parcelas:', errors)
+          }
+        } else {
+          toast.error('Nenhuma parcela foi criada. Verifique os erros acima.')
+          return
+        }
       } else {
         // Criar transação única
         const transactionData = {
@@ -103,7 +115,7 @@ export default function NewTransactionPage() {
           type: formData.type,
           category_id: formData.categoryId,
           transaction_date: formData.transactionDate,
-          expense_nature: formData.expenseNature,
+          expense_nature: formData.expenseNature || null,
           installment_number: null,
           total_installments: null,
           payment_method: formData.paymentMethod,
@@ -114,9 +126,13 @@ export default function NewTransactionPage() {
         toast.success('Transação criada com sucesso!')
       }
       
+      // Pequeno delay para garantir que as transações foram salvas
+      await new Promise(resolve => setTimeout(resolve, 500))
       router.push('/transactions')
     } catch (error) {
-      toast.error((error as Error).message)
+      console.error('Erro ao criar transação:', error)
+      const errorMsg = (error as Error).message || 'Erro desconhecido ao criar transação'
+      toast.error(errorMsg)
     }
   }
 
