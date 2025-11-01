@@ -13,10 +13,8 @@ import { Badge } from '@/components/ui/badge'
 import { Plus, Trash2, Edit, Filter, Download } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-<<<<<<< HEAD
 import { ImportTransactionsModal } from '@/components/forms/import-transactions-modal'
-=======
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
+import { useState } from 'react'
 
 export default function TransactionsPage() {
   const { transactions, loading, error, fetchTransactions, deleteTransaction } = useTransactionsStore()
@@ -111,7 +109,6 @@ export default function TransactionsPage() {
     <div className="container mx-auto py-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-<<<<<<< HEAD
           <h1 className="text-3xl font-bold">Despesas</h1>
           <p className="text-muted-foreground">Gerencie suas despesas e saídas financeiras</p>
         </div>
@@ -126,14 +123,6 @@ export default function TransactionsPage() {
               Nova Despesa
             </Button>
           </Link>
-=======
-          <h1 className="text-3xl font-bold">Transações</h1>
-          <p className="text-muted-foreground">Gerencie suas entradas e saídas financeiras</p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/transactions/import"><Button variant="outline"><Download className="w-4 h-4 mr-2" />Importar</Button></Link>
-          <Link href="/transactions/new"><Button><Plus className="w-4 h-4 mr-2" />Nova Transação</Button></Link>
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
         </div>
       </div>
 

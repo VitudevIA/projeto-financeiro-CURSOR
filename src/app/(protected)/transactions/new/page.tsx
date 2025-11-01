@@ -1,33 +1,22 @@
 'use client'
 
-<<<<<<< HEAD
 import { useState, useEffect, useRef } from 'react'
-=======
-import { useState, useEffect } from 'react'
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 import { useRouter } from 'next/navigation'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
 import { useCardsStore } from '@/lib/stores/cards-store'
-<<<<<<< HEAD
 import { useLastPreferences } from '@/hooks/useLastPreferences'
-=======
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-<<<<<<< HEAD
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { Zap, List, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-=======
-import { toast } from 'sonner'
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 
 interface TransactionFormData {
   description: string
@@ -40,7 +29,6 @@ interface TransactionFormData {
   paymentMethod: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
 }
 
-<<<<<<< HEAD
 type ValidationErrors = Partial<Record<keyof TransactionFormData, string>>
 
 // Valores rápidos pré-definidos
@@ -76,7 +64,6 @@ export default function NewTransactionPage() {
     transactionDate: new Date().toISOString().split('T')[0],
     installments: 1,
     expenseNature: '',
-<<<<<<< HEAD
     paymentMethod: 'cash',
 =======
     paymentMethod: 'cash'
@@ -85,7 +72,6 @@ export default function NewTransactionPage() {
 
   const [cardId, setCardId] = useState<string>('')
   const [showOnlyActiveCards, setShowOnlyActiveCards] = useState<boolean>(true)
-<<<<<<< HEAD
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({})
   const [topCategories, setTopCategories] = useState<string[]>([])
 
@@ -99,7 +85,6 @@ export default function NewTransactionPage() {
     fetchCategories()
   }, [fetchCards, fetchCategories])
 
-<<<<<<< HEAD
   // Ref para rastrear se já fez auto-preenchimento
   const hasAutoFilledRef = useRef(false)
 
@@ -278,7 +263,6 @@ export default function NewTransactionPage() {
     }
 
     try {
-<<<<<<< HEAD
       // Salva preferências do usuário
       await savePreferences({
         categoryId: formData.categoryId,
@@ -287,8 +271,6 @@ export default function NewTransactionPage() {
         type: formData.type,
       })
 
-=======
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
       const installmentCount = formData.installments || 1
       const errors: string[] = []
 
@@ -301,7 +283,6 @@ export default function NewTransactionPage() {
           const installmentDate = new Date(formData.transactionDate)
           installmentDate.setMonth(installmentDate.getMonth() + i)
 
-<<<<<<< HEAD
           const rawType = String(formData.type || '').trim().toLowerCase()
           const validatedType: 'income' | 'expense' =
             rawType === 'income' || rawType === 'expense' ? (rawType as 'income' | 'expense') : 'expense'
@@ -330,7 +311,6 @@ export default function NewTransactionPage() {
           const transactionData = {
             description: `${formData.description} (${i + 1}/${installmentCount})`,
             amount: installmentAmount,
-<<<<<<< HEAD
             type: validatedType,
 =======
             type: validatedType, // ✅ Tipo validado antes de enviar
@@ -340,7 +320,6 @@ export default function NewTransactionPage() {
             expense_nature: formData.expenseNature || null,
             installment_number: i + 1,
             total_installments: installmentCount,
-<<<<<<< HEAD
             payment_method: validatedPaymentMethod,
             card_id: validatedPaymentMethod === 'credit' || validatedPaymentMethod === 'debit' ? cardId : null,
 =======
@@ -371,7 +350,6 @@ export default function NewTransactionPage() {
         }
       } else {
         // Criar transação única
-<<<<<<< HEAD
         const rawType = String(formData.type || '').trim().toLowerCase()
         const validatedType: 'income' | 'expense' =
           rawType === 'income' || rawType === 'expense' ? (rawType as 'income' | 'expense') : 'expense'
@@ -400,7 +378,6 @@ export default function NewTransactionPage() {
         const transactionData = {
           description: formData.description,
           amount: formData.amount,
-<<<<<<< HEAD
           type: validatedType,
 =======
           type: validatedType, // ✅ Tipo validado antes de enviar
@@ -410,7 +387,6 @@ export default function NewTransactionPage() {
           expense_nature: formData.expenseNature || null,
           installment_number: null,
           total_installments: null,
-<<<<<<< HEAD
           payment_method: validatedPaymentMethod,
           card_id: validatedPaymentMethod === 'credit' || validatedPaymentMethod === 'debit' ? cardId : null,
         }
@@ -440,7 +416,6 @@ export default function NewTransactionPage() {
     }
   }
 
-<<<<<<< HEAD
   const filteredCategories = categories.filter((cat) => cat.type === formData.type || !cat.type)
 =======
   const handleInputChange = (field: keyof TransactionFormData, value: string | number) => {
@@ -459,7 +434,6 @@ export default function NewTransactionPage() {
       <div className="max-w-2xl mx-auto">
         <Card>
           <CardHeader>
-<<<<<<< HEAD
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle>Nova Despesa</CardTitle>
@@ -583,7 +557,6 @@ export default function NewTransactionPage() {
                       }
                     }}
                   >
-<<<<<<< HEAD
                     <SelectTrigger
                       className={cn(
                         validationErrors.paymentMethod && 'border-destructive focus-visible:ring-destructive/20'
@@ -602,7 +575,6 @@ export default function NewTransactionPage() {
                       <SelectItem value="boleto">Boleto</SelectItem>
                     </SelectContent>
                   </Select>
-<<<<<<< HEAD
                   {validationErrors.paymentMethod && (
                     <p className="text-xs text-destructive flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
