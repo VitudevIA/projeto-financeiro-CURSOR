@@ -1,0 +1,614 @@
+[
+  {
+    "id": "TC001",
+    "title": "User Registration with Valid Email and Password",
+    "description": "Verify that a new user can successfully register with a valid email address and a strong password.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the signup page"
+      },
+      {
+        "type": "action",
+        "description": "Enter a valid email address"
+      },
+      {
+        "type": "action",
+        "description": "Enter a strong password meeting all password rules"
+      },
+      {
+        "type": "action",
+        "description": "Click the register button"
+      },
+      {
+        "type": "assertion",
+        "description": "User is successfully registered and redirected to the dashboard"
+      }
+    ]
+  },
+  {
+    "id": "TC002",
+    "title": "User Login Success with Correct Credentials",
+    "description": "Verify that a user can log in with valid registered email and password.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login page"
+      },
+      {
+        "type": "action",
+        "description": "Input valid registered email"
+      },
+      {
+        "type": "action",
+        "description": "Input correct password"
+      },
+      {
+        "type": "action",
+        "description": "Click login button"
+      },
+      {
+        "type": "assertion",
+        "description": "User is logged in and dashboard page loads with KPIs and charts"
+      }
+    ]
+  },
+  {
+    "id": "TC003",
+    "title": "User Login Failure with Incorrect Password",
+    "description": "Verify that login fails when user inputs valid email but incorrect password.",
+    "category": "error handling",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to the login page"
+      },
+      {
+        "type": "action",
+        "description": "Input valid registered email"
+      },
+      {
+        "type": "action",
+        "description": "Input incorrect password"
+      },
+      {
+        "type": "action",
+        "description": "Click login button"
+      },
+      {
+        "type": "assertion",
+        "description": "Login fails and appropriate error message 'Invalid email or password' is displayed"
+      }
+    ]
+  },
+  {
+    "id": "TC004",
+    "title": "Password Recovery Flow",
+    "description": "Verify that the user can request password recovery and receive reset email.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to forgot password page"
+      },
+      {
+        "type": "action",
+        "description": "Enter registered user email"
+      },
+      {
+        "type": "action",
+        "description": "Submit password recovery request"
+      },
+      {
+        "type": "assertion",
+        "description": "System shows confirmation message and password reset email is sent"
+      }
+    ]
+  },
+  {
+    "id": "TC005",
+    "title": "Middleware Protects Routes for Unauthenticated Users",
+    "description": "Verify that unauthenticated users cannot access protected areas and are redirected to login.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Attempt to navigate to dashboard URL without login"
+      },
+      {
+        "type": "assertion",
+        "description": "User is redirected to login page"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to navigate to transactions page without login"
+      },
+      {
+        "type": "assertion",
+        "description": "User is redirected to login page"
+      }
+    ]
+  },
+  {
+    "id": "TC006",
+    "title": "Add Multiple Credit and Debit Cards Without Limit",
+    "description": "Verify that user can add unlimited number of credit and debit cards in card management section.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login and navigate to cards management page"
+      },
+      {
+        "type": "action",
+        "description": "Add a new credit card with valid details"
+      },
+      {
+        "type": "assertion",
+        "description": "Credit card is successfully added and displayed in the list"
+      },
+      {
+        "type": "action",
+        "description": "Add multiple debit cards sequentially with valid data"
+      },
+      {
+        "type": "assertion",
+        "description": "All cards are listed correctly without any upper limit errors"
+      }
+    ]
+  },
+  {
+    "id": "TC007",
+    "title": "Create, Edit and Delete Transactions",
+    "description": "Verify full CRUD functionality for financial transactions with various types (credit, debit, PIX, boleto, cash).",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to transactions page after login"
+      },
+      {
+        "type": "action",
+        "description": "Create a new transaction with type credit and all mandatory fields"
+      },
+      {
+        "type": "assertion",
+        "description": "Transaction appears in list with correct data"
+      },
+      {
+        "type": "action",
+        "description": "Edit the created transaction updating amount and category"
+      },
+      {
+        "type": "assertion",
+        "description": "Transaction is updated with new values in the UI"
+      },
+      {
+        "type": "action",
+        "description": "Delete the transaction"
+      },
+      {
+        "type": "assertion",
+        "description": "Transaction is removed from the list with confirmation message"
+      }
+    ]
+  },
+  {
+    "id": "TC008",
+    "title": "Filter Transactions by Date, Category, Card and Payment Type",
+    "description": "Verify that transaction list can be filtered correctly using all available filters.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to transactions page"
+      },
+      {
+        "type": "action",
+        "description": "Apply date range filter"
+      },
+      {
+        "type": "assertion",
+        "description": "Transactions displayed match the date range"
+      },
+      {
+        "type": "action",
+        "description": "Apply category filter"
+      },
+      {
+        "type": "assertion",
+        "description": "Transactions displayed belong to selected category"
+      },
+      {
+        "type": "action",
+        "description": "Apply card filter"
+      },
+      {
+        "type": "assertion",
+        "description": "Transactions displayed are linked to selected card"
+      },
+      {
+        "type": "action",
+        "description": "Apply payment type filter"
+      },
+      {
+        "type": "assertion",
+        "description": "Transactions displayed match selected payment type"
+      }
+    ]
+  },
+  {
+    "id": "TC009",
+    "title": "Import Transactions via XLSX Spreadsheet",
+    "description": "Verify that user can import transactions from a valid .xlsx spreadsheet file.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to transactions import page"
+      },
+      {
+        "type": "action",
+        "description": "Upload a correctly formatted .xlsx file with transaction data"
+      },
+      {
+        "type": "assertion",
+        "description": "Transactions from the file are imported and appear in the transaction list with correct details"
+      },
+      {
+        "type": "action",
+        "description": "Upload a malformed or invalid .xlsx file"
+      },
+      {
+        "type": "assertion",
+        "description": "System rejects the file with an appropriate error message"
+      }
+    ]
+  },
+  {
+    "id": "TC010",
+    "title": "Create and Manage Monthly Budgets with Alerts",
+    "description": "Verify that user can create monthly budget categories, track expenses, and receive alerts when limits are approached or breached.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to budgets management page"
+      },
+      {
+        "type": "action",
+        "description": "Create a new monthly budget for a category with a set spending limit"
+      },
+      {
+        "type": "assertion",
+        "description": "Budget is listed with correct limit and current spent amount is zero"
+      },
+      {
+        "type": "action",
+        "description": "Register transactions in the budget category and observe budget consumption"
+      },
+      {
+        "type": "assertion",
+        "description": "Budget consumption updates with each transaction in the category"
+      },
+      {
+        "type": "action",
+        "description": "Create transactions that exceed the budget limit"
+      },
+      {
+        "type": "assertion",
+        "description": "System triggers alert or notification warning about budget limit breach"
+      }
+    ]
+  },
+  {
+    "id": "TC011",
+    "title": "Dashboard Load and Display Financial KPIs and Graphs",
+    "description": "Verify that dashboard correctly aggregates and shows key financial indicators, charts by category, top expenses, and time series data.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login and navigate to main dashboard"
+      },
+      {
+        "type": "assertion",
+        "description": "KPIs such as total spending, income, budget usage are displayed and accurate based on user data"
+      },
+      {
+        "type": "assertion",
+        "description": "Pie chart shows expense distribution by category"
+      },
+      {
+        "type": "assertion",
+        "description": "Bar chart displays top spending categories or transactions"
+      },
+      {
+        "type": "assertion",
+        "description": "Time series chart shows spending trends across selected time periods"
+      }
+    ]
+  },
+  {
+    "id": "TC012",
+    "title": "Generation and Display of Automatic Financial Insights",
+    "description": "Verify that the system generates text-based financial insights and anomaly alerts based on spending patterns and transaction analysis.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login and go to insights section or dashboard where insights are visible"
+      },
+      {
+        "type": "assertion",
+        "description": "System displays financial insights such as spending trends, anomalies, or savings tips based on user transactions"
+      },
+      {
+        "type": "action",
+        "description": "Add a transaction with an amount unusually high for a category to trigger anomaly detection"
+      },
+      {
+        "type": "assertion",
+        "description": "An anomaly alert or notification appears in the insights section"
+      }
+    ]
+  },
+  {
+    "id": "TC013",
+    "title": "Export Financial Reports in PDF and Excel Formats",
+    "description": "Verify exporting capabilities generate accurate financial reports in PDF and Excel formats for user data.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to report export section"
+      },
+      {
+        "type": "action",
+        "description": "Select export format as PDF and confirm export"
+      },
+      {
+        "type": "assertion",
+        "description": "A PDF report is downloaded with user financial data correctly formatted"
+      },
+      {
+        "type": "action",
+        "description": "Select export format as Excel and confirm export"
+      },
+      {
+        "type": "assertion",
+        "description": "An Excel file is downloaded, containing all relevant financial transactions and summaries"
+      }
+    ]
+  },
+  {
+    "id": "TC014",
+    "title": "User Profile Settings and Theme Toggle",
+    "description": "Verify user can update profile details and switch between light and dark themes, with preferences persisted.",
+    "category": "functional",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to profile settings page"
+      },
+      {
+        "type": "action",
+        "description": "Change user profile information such as name or email if allowed"
+      },
+      {
+        "type": "assertion",
+        "description": "Profile updates are saved and reflected after page reload"
+      },
+      {
+        "type": "action",
+        "description": "Toggle theme from light to dark mode"
+      },
+      {
+        "type": "assertion",
+        "description": "UI theme switches immediately and user preference is saved for subsequent sessions"
+      }
+    ]
+  },
+  {
+    "id": "TC015",
+    "title": "Add and Manage Sub-Users with Permission Control",
+    "description": "Verify that main user can add sub-users within family account with restricted permissions and sub-users see limited data accordingly.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Log in as main user and navigate to family account management"
+      },
+      {
+        "type": "action",
+        "description": "Add a sub-user with view-only permission"
+      },
+      {
+        "type": "assertion",
+        "description": "Sub-user receives invitation and can log in"
+      },
+      {
+        "type": "action",
+        "description": "Log in as sub-user"
+      },
+      {
+        "type": "assertion",
+        "description": "Sub-user can view dashboard and transactions but cannot add/edit/delete data"
+      },
+      {
+        "type": "action",
+        "description": "Log in as main user and update sub-users permissions"
+      },
+      {
+        "type": "assertion",
+        "description": "Changes in permissions are enforced immediately in sub-user access"
+      }
+    ]
+  },
+  {
+    "id": "TC016",
+    "title": "Ensure Environment Separation with Data Isolation",
+    "description": "Validate that development and production environments have separated data stores and no data leak occurs between them.",
+    "category": "security",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Access the app in development environment and input test data"
+      },
+      {
+        "type": "assertion",
+        "description": "Test data is stored in development database and isolated"
+      },
+      {
+        "type": "action",
+        "description": "Access the app in production environment and verify the test data does not appear"
+      },
+      {
+        "type": "assertion",
+        "description": "No data from development is visible in production environment"
+      }
+    ]
+  },
+  {
+    "id": "TC017",
+    "title": "Transaction and Budget Limit Validation with Alerts",
+    "description": "Verify that limits on transactions and budgets are validated and appropriate alerts are displayed when limits are reached or exceeded.",
+    "category": "functional",
+    "priority": "High",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Create a category budget with a set spending limit"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to add transactions that cumulatively hit the budget limit"
+      },
+      {
+        "type": "assertion",
+        "description": "System displays alert when user approaches budget limit"
+      },
+      {
+        "type": "action",
+        "description": "Attempt to add transaction exceeding budget limit"
+      },
+      {
+        "type": "assertion",
+        "description": "System blocks the transaction or prompts user with a warning alert"
+      }
+    ]
+  },
+  {
+    "id": "TC018",
+    "title": "CRUD and Customization of Transaction Categories",
+    "description": "Verify that user can create, edit, delete, and customize transaction categories from predefined sets.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Navigate to categories management page"
+      },
+      {
+        "type": "action",
+        "description": "Add a new custom category"
+      },
+      {
+        "type": "assertion",
+        "description": "New category is saved and appears in selection drop-downs"
+      },
+      {
+        "type": "action",
+        "description": "Edit an existing category name or color"
+      },
+      {
+        "type": "assertion",
+        "description": "Changes are reflected in all relevant UI components"
+      },
+      {
+        "type": "action",
+        "description": "Delete a custom category"
+      },
+      {
+        "type": "assertion",
+        "description": "Category is removed and transactions assigned to it require reassignment or show warnings"
+      }
+    ]
+  },
+  {
+    "id": "TC019",
+    "title": "Data Synchronization and State Management Using Zustand",
+    "description": "Verify that data stores synchronize correctly across components, reflecting real-time updates in transactions, budgets, and cards.",
+    "category": "functional",
+    "priority": "Medium",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Perform transaction CRUD operations in transactions page"
+      },
+      {
+        "type": "assertion",
+        "description": "Dashboard and budget components update automatically without page reload"
+      },
+      {
+        "type": "action",
+        "description": "Add or modify cards"
+      },
+      {
+        "type": "assertion",
+        "description": "Cards list and related filters update in real time"
+      }
+    ]
+  },
+  {
+    "id": "TC020",
+    "title": "Legal Pages Accessibility",
+    "description": "Verify that Terms of Use and Privacy Policy pages are accessible only by authenticated users and display correct static content.",
+    "category": "ui",
+    "priority": "Low",
+    "steps": [
+      {
+        "type": "action",
+        "description": "Login and navigate to Privacy Policy page"
+      },
+      {
+        "type": "assertion",
+        "description": "Page loads with correct privacy policy content"
+      },
+      {
+        "type": "action",
+        "description": "Navigate to Terms of Use page"
+      },
+      {
+        "type": "assertion",
+        "description": "Page loads with correct terms of use text"
+      },
+      {
+        "type": "action",
+        "description": "Logout and attempt to access these pages"
+      },
+      {
+        "type": "assertion",
+        "description": "User is redirected to login page"
+      }
+    ]
+  }
+]

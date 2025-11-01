@@ -1,0 +1,20 @@
+<testsuites id="" name="" tests="4" failures="0" skipped="0" errors="0" time="12.928970999999999">
+<testsuite name="a11y.spec.ts" timestamp="2025-10-31T18:40:53.401Z" hostname="chromium" tests="4" failures="0" skipped="0" time="7.077" errors="0">
+<testcase name="Acessibilidade › deve atender padrões WCAG AA na página de login" classname="a11y.spec.ts" time="1.974">
+<system-out>
+<![CDATA[No accessibility violations detected!
+]]>
+</system-out>
+</testcase>
+<testcase name="Acessibilidade › deve navegar por teclado na página de login" classname="a11y.spec.ts" time="1.834">
+</testcase>
+<testcase name="Acessibilidade › deve ter ARIA labels adequados" classname="a11y.spec.ts" time="1.592">
+</testcase>
+<testcase name="Acessibilidade › deve ter contraste adequado" classname="a11y.spec.ts" time="1.677">
+<system-out>
+<![CDATA[No accessibility violations detected!
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>
