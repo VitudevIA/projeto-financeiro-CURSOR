@@ -13,13 +13,19 @@ import { Badge } from '@/components/ui/badge'
 import { Plus, Trash2, Edit, Filter, Download } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+<<<<<<< HEAD
 import { ImportTransactionsModal } from '@/components/forms/import-transactions-modal'
+=======
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 
 export default function TransactionsPage() {
   const { transactions, loading, error, fetchTransactions, deleteTransaction } = useTransactionsStore()
   const { categories } = useCategoriesStore()
   const { cards, fetchCards } = useCardsStore()
+<<<<<<< HEAD
   const [importModalOpen, setImportModalOpen] = useState(false)
+=======
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 
   const [filters, setFilters] = useState({
     startDate: '',
@@ -105,6 +111,7 @@ export default function TransactionsPage() {
     <div className="container mx-auto py-6">
       <div className="flex justify-between items-center mb-6">
         <div>
+<<<<<<< HEAD
           <h1 className="text-3xl font-bold">Despesas</h1>
           <p className="text-muted-foreground">Gerencie suas despesas e saídas financeiras</p>
         </div>
@@ -119,6 +126,14 @@ export default function TransactionsPage() {
               Nova Despesa
             </Button>
           </Link>
+=======
+          <h1 className="text-3xl font-bold">Transações</h1>
+          <p className="text-muted-foreground">Gerencie suas entradas e saídas financeiras</p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/transactions/import"><Button variant="outline"><Download className="w-4 h-4 mr-2" />Importar</Button></Link>
+          <Link href="/transactions/new"><Button><Plus className="w-4 h-4 mr-2" />Nova Transação</Button></Link>
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
         </div>
       </div>
 
@@ -235,7 +250,11 @@ export default function TransactionsPage() {
               <Link href="/transactions/new">
                 <Button>
                   <Plus className="w-4 h-4 mr-2" />
+<<<<<<< HEAD
                   Criar Primeira Despesa
+=======
+                  Criar Primeira Transação
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
                 </Button>
               </Link>
             </div>
@@ -301,6 +320,7 @@ export default function TransactionsPage() {
           )}
         </CardContent>
       </Card>
+<<<<<<< HEAD
 
       {/* Modal de Importação */}
       <ImportTransactionsModal
@@ -310,6 +330,8 @@ export default function TransactionsPage() {
           fetchTransactions(filters)
         }}
       />
+=======
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
     </div>
   )
 }

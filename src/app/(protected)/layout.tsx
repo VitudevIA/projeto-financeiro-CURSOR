@@ -14,10 +14,15 @@ import {
   Settings,
   LogOut,
   Zap,
+<<<<<<< HEAD
   Sparkles,
   Menu,
   X,
   TrendingUp
+=======
+  Menu,
+  X
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 } from 'lucide-react'
 import { TransactionLimitStatus } from '@/components/transaction-limit-checker'
 import { cn } from '@/lib/utils'
@@ -77,10 +82,15 @@ export default function ProtectedLayout({
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Transações', href: '/transactions', icon: Receipt },
+<<<<<<< HEAD
     { name: 'Receitas', href: '/incomes', icon: TrendingUp },
     { name: 'Cartões', href: '/cards', icon: CreditCard },
     { name: 'Orçamentos', href: '/budgets', icon: PiggyBank },
     { name: 'Análise IA', href: '/analysis', icon: Sparkles },
+=======
+    { name: 'Cartões', href: '/cards', icon: CreditCard },
+    { name: 'Orçamentos', href: '/budgets', icon: PiggyBank },
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
     { name: 'Planos', href: '/plans', icon: Zap },
     { name: 'Configurações', href: '/settings', icon: Settings },
   ]

@@ -31,6 +31,7 @@ export interface Transaction {
   updated_at: string | null
 }
 
+<<<<<<< HEAD
 export interface RecurringIncome {
   id: string
   user_id: string
@@ -64,6 +65,8 @@ export interface RecurringExpense {
   updated_at: string | null
 }
 
+=======
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 export interface User {
   id: string
   email: string
@@ -86,15 +89,21 @@ export interface TransactionWithCategory extends Transaction {
 export type BudgetInsert = Omit<Budget, 'id' | 'created_at' | 'updated_at'>
 export type CategoryInsert = Omit<Category, 'id' | 'created_at' | 'updated_at'>
 export type TransactionInsert = Omit<Transaction, 'id' | 'created_at' | 'updated_at'>
+<<<<<<< HEAD
 export type RecurringIncomeInsert = Omit<RecurringIncome, 'id' | 'created_at' | 'updated_at'>
 export type RecurringExpenseInsert = Omit<RecurringExpense, 'id' | 'created_at' | 'updated_at'>
+=======
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 
 // Tipos para atualização (sem campos obrigatórios)
 export type BudgetUpdate = Partial<Omit<Budget, 'id' | 'user_id' | 'created_at'>>
 export type CategoryUpdate = Partial<Omit<Category, 'id' | 'user_id' | 'created_at'>>
 export type TransactionUpdate = Partial<Omit<Transaction, 'id' | 'user_id' | 'created_at'>>
+<<<<<<< HEAD
 export type RecurringIncomeUpdate = Partial<Omit<RecurringIncome, 'id' | 'user_id' | 'created_at'>>
 export type RecurringExpenseUpdate = Partial<Omit<RecurringExpense, 'id' | 'user_id' | 'created_at'>>
+=======
+>>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
 
 // Database types para o Supabase (se estiver usando a geração automática)
 export interface Database {
