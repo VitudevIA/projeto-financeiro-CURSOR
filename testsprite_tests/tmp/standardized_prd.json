@@ -1,0 +1,693 @@
+{
+  "projectName": "Projeto Financeiro - MVP",
+  "version": "1.0.0",
+  "lastUpdate": "2025-10-31",
+  
+  "problemStatement": {
+    "primaryProblem": "Usuários não conseguem visualizar gastos consolidados de múltiplos cartões",
+    "secondaryProblem": "Falta de controle por pessoa em famílias/casais",
+    "targetAudience": "Indivíduos e casais",
+    "successMetric": "Y transações registradas por usuários ativos"
+  },
+
+  "businessRequirements": {
+    "timeline": "Indefinido (projeto pessoal)",
+    "budget": "R$ 1.000,00 iniciais",
+    "monetizationStrategy": {
+      "model": "Freemium + Assinatura",
+      "freeTier": {
+        "maxTransactions": 100,
+        "maxCards": 2
+      },
+      "premiumTier": {
+        "maxCards": 6,
+        "unlimitedTransactions": true
+      }
+    },
+    "rolloutStrategy": "Lançamento público",
+    "postMVPFeatures": [
+      "Mobile app nativo",
+      "Integração Open Banking",
+      "Login social (Google, Apple)",
+      "Tags customizadas",
+      "Histórico de auditoria",
+      "IA avançada com sugestões automáticas"
+    ]
+  },
+
+  "functionalRequirements": {
+    "authentication": {
+      "mvp": {
+        "method": "Email/senha",
+        "provider": "Supabase Auth",
+        "twoFactorAuth": false
+      },
+      "future": [
+        "Login social (Google, Apple)",
+        "2FA obrigatório"
+      ],
+      "additionalSecurity": {
+        "passwordMinLength": 8,
+        "passwordComplexity": "Mínimo 1 maiúscula, 1 minúscula, 1 número",
+        "sessionTimeout": "7 dias",
+        "maxLoginAttempts": 5,
+        "lockoutDuration": "15 minutos"
+      }
+    },
+
+    "userManagement": {
+      "accountModel": "Individual com sub-usuários (família)",
+      "permissions": {
+        "admin": [
+          "Adicionar/remover sub-usuários",
+          "Editar todas as transações",
+          "Gerenciar configurações da conta",
+          "Acesso a todos os dados"
+        ],
+        "subUser": [
+          "Visualizar transações",
+          "Adicionar transações próprias",
+          "Visualizar relatórios"
+        ]
+      },
+      "onboarding": {
+        "type": "Tutorial guiado",
+        "steps": [
+          "Bem-vindo e overview",
+          "Cadastro de primeiro cartão",
+          "Registro de primeira transação",
+          "Tour pelo dashboard",
+          "Configuração de categorias",
+          "Definição de orçamento"
+        ]
+      }
+    },
+
+    "transactions": {
+      "inputMethods": {
+        "manual": true,
+        "excelImport": {
+          "enabled": true,
+          "format": ".xlsx",
+          "requiredColumns": [
+            "data",
+            "descricao",
+            "valor",
+            "categoria",
+            "tipo_pagamento"
+          ]
+        },
+        "future": "Open Banking/APIs bancárias"
+      },
+      "types": [
+        "Crédito",
+        "Débito",
+        "Dinheiro",
+        "PIX",
+        "Boleto"
+      ],
+      "fields": {
+        "required": [
+          "description",
+          "amount",
+          "date",
+          "category",
+          "paymentMethod",
+          "type (income/expense)"
+        ],
+        "optional": [
+          "card",
+          "notes",
+          "attachments"
+        ]
+      },
+      "validation": {
+        "maxDescriptionLength": 200,
+        "maxAmount": 1000000,
+        "dateRange": "Últimos 5 anos até 1 ano futuro",
+        "duplicateDetection": true
+      },
+      "features": {
+        "mvp": [
+          "CRUD básico",
+          "Filtros (data, categoria, cartão, tipo)",
+          "Busca por descrição",
+          "Exportação CSV/PDF"
+        ],
+        "future": [
+          "Parcelamentos",
+          "Transações recorrentes automáticas",
+          "Anexos (notas fiscais)",
+          "Histórico de edições auditado"
+        ]
+      }
+    },
+
+    "cards": {
+      "maxCardsPerUser": {
+        "free": 2,
+        "premium": 6
+      },
+      "cardInfo": [
+        "Nome do cartão",
+        "Bandeira (Visa, Mastercard, etc)",
+        "Últimos 4 dígitos",
+        "Cor/ícone para identificação visual",
+        "Limite de crédito (opcional)"
+      ],
+      "features": {
+        "mvp": [
+          "CRUD de cartões",
+          "Associação com transações",
+          "Visualização de gastos por cartão"
+        ],
+        "future": [
+          "Gerenciamento de vencimento",
+          "Melhor data de compra",
+          "Alertas de limite"
+        ]
+      }
+    },
+
+    "categories": {
+      "predefined": [
+        "Alimentação",
+        "Transporte",
+        "Moradia",
+        "Saúde",
+        "Educação",
+        "Lazer",
+        "Streamings",
+        "Vestuário",
+        "Serviços",
+        "Outros"
+      ],
+      "customization": {
+        "enabled": true,
+        "location": "Aba de configurações",
+        "maxCustomCategories": 20
+      },
+      "categorization": {
+        "method": "Manual com confirmação do usuário",
+        "future": "IA sugere automaticamente baseado em histórico"
+      },
+      "subcategories": {
+        "mvp": false,
+        "future": true
+      },
+      "tags": {
+        "mvp": false,
+        "future": true
+      }
+    },
+
+    "budgets": {
+      "enabled": true,
+      "scope": "Mensal por categoria",
+      "alerts": [
+        "50% do orçamento usado",
+        "80% do orçamento usado",
+        "100% do orçamento atingido",
+        "Orçamento excedido"
+      ],
+      "rollover": "Saldo não utilizado pode ser acumulado (configurável)"
+    },
+
+    "dashboard": {
+      "defaultPeriod": "Mês atual",
+      "customPeriodFilter": true,
+      "kpis": [
+        {
+          "name": "Total Gasto",
+          "description": "Soma de todas as despesas do período"
+        },
+        {
+          "name": "Média Diária",
+          "description": "Gasto médio por dia"
+        },
+        {
+          "name": "Projeção do Mês",
+          "description": "Projeção baseada na média atual"
+        },
+        {
+          "name": "% Orçamento Usado",
+          "description": "Percentual do orçamento mensal utilizado"
+        },
+        {
+          "name": "Saldo Disponível",
+          "description": "Diferença entre receitas e despesas"
+        },
+        {
+          "name": "Dias de Reserva",
+          "description": "Quantos dias o saldo atual sustenta baseado na média"
+        },
+        {
+          "name": "% Endividamento",
+          "description": "Percentual de gastos em relação à receita"
+        }
+      ],
+      "charts": [
+        {
+          "type": "Line Chart",
+          "title": "Evolução Temporal de Gastos",
+          "description": "Gastos diários do mês"
+        },
+        {
+          "type": "Bar Chart",
+          "title": "Comparativo entre Usuários",
+          "description": "Gastos por membro da família"
+        },
+        {
+          "type": "Line Chart",
+          "title": "Evolução por Cartão",
+          "description": "Gastos separados por cada cartão"
+        },
+        {
+          "type": "Pie Chart",
+          "title": "Distribuição por Categoria",
+          "description": "Proporção de gastos por categoria"
+        },
+        {
+          "type": "List",
+          "title": "Top 5 Gastos",
+          "description": "Maiores transações do período"
+        }
+      ],
+      "refreshRate": "Real-time com atualizações ao adicionar transações"
+    },
+
+    "insights": {
+      "type": "Insights textuais + previsões",
+      "examples": [
+        "Você gastou 30% mais em restaurantes este mês",
+        "Seu gasto com transporte está acima da média",
+        "Você está no caminho certo para ficar dentro do orçamento"
+      ],
+      "predictions": {
+        "enabled": true,
+        "model": "ML clássico (regressão linear, médias móveis)",
+        "features": [
+          "Previsão de gastos futuros",
+          "Alertas de anomalias (gastos incomuns)",
+          "Sugestões de economia"
+        ]
+      },
+      "frequency": "Automática diária/semanal",
+      "trigger": "Background job + sob demanda",
+      "privacy": "Processamento local/on-premise (sem envio para APIs externas)"
+    },
+
+    "reports": {
+      "exportFormats": [
+        "CSV",
+        "PDF",
+        "Excel (.xlsx)"
+      ],
+      "reportTypes": [
+        "Relatório mensal completo",
+        "Relatório por categoria",
+        "Relatório por cartão",
+        "Relatório por período customizado"
+      ],
+      "includedData": [
+        "Transações detalhadas",
+        "Gráficos visuais",
+        "KPIs principais",
+        "Insights gerados"
+      ]
+    },
+
+    "notifications": {
+      "mvp": false,
+      "future": {
+        "channels": [
+          "Email",
+          "Push notification (PWA)"
+        ],
+        "triggers": [
+          "Limites de orçamento atingidos",
+          "Faturas próximas do vencimento",
+          "Gastos incomuns detectados",
+          "Relatório semanal/mensal"
+        ]
+      }
+    }
+  },
+
+  "technicalRequirements": {
+    "techStack": {
+      "frontend": {
+        "framework": "Next.js 16.0.0 (App Router)",
+        "library": "React 19.2.0",
+        "language": "TypeScript 5",
+        "styling": "Tailwind CSS 4",
+        "stateManagement": "Zustand",
+        "uiComponents": "Radix UI + shadcn/ui",
+        "charts": "Recharts",
+        "notifications": "Sonner",
+        "icons": "Lucide React"
+      },
+      "backend": {
+        "platform": "Supabase (BaaS)",
+        "runtime": "Node.js (via Supabase Edge Functions)",
+        "database": "PostgreSQL (via Supabase)",
+        "auth": "Supabase Auth",
+        "storage": "Supabase Storage"
+      },
+      "deployment": {
+        "hosting": "Vercel",
+        "cdn": "Vercel Edge Network",
+        "ssl": "Automático via Vercel",
+        "domain": "app.dominio.com"
+      }
+    },
+
+    "architecture": {
+      "pattern": "Next.js App Router com Server/Client Components",
+      "routing": "File-based routing com route groups",
+      "dataFetching": "Server Components + Client-side SWR/Zustand",
+      "authentication": "Middleware-based route protection",
+      "apiLayer": "Supabase Client SDK + Edge Functions"
+    },
+
+    "database": {
+      "type": "PostgreSQL (via Supabase)",
+      "schema": {
+        "mainTables": [
+          "users (auth.users via Supabase)",
+          "profiles (informações complementares do usuário)",
+          "cards (cartões de crédito/débito)",
+          "categories (categorias de transações)",
+          "transactions (transações financeiras)",
+          "budgets (orçamentos mensais)",
+          "insights (insights gerados pela IA)",
+          "user_settings (configurações do usuário)"
+        ]
+      },
+      "relationships": {
+        "users": "1:N profiles (sub-usuários)",
+        "users": "1:N cards",
+        "users": "1:N transactions",
+        "cards": "1:N transactions",
+        "categories": "1:N transactions",
+        "users": "1:N budgets"
+      },
+      "indexes": [
+        "transactions.user_id",
+        "transactions.category_id",
+        "transactions.card_id",
+        "transactions.transaction_date",
+        "budgets.user_id + month"
+      ],
+      "rls": {
+        "enabled": true,
+        "policies": [
+          "Usuários só veem seus próprios dados",
+          "Admin vê dados de todos os sub-usuários",
+          "Sub-usuários não editam dados de outros"
+        ]
+      }
+    },
+
+    "security": {
+      "authentication": {
+        "provider": "Supabase Auth",
+        "sessionManagement": "JWT + Refresh Token",
+        "cookieSettings": "HttpOnly, Secure, SameSite=Lax"
+      },
+      "authorization": {
+        "method": "Row Level Security (RLS) no Supabase",
+        "roleBasedAccess": true
+      },
+      "dataProtection": {
+        "encryption": "Em trânsito (HTTPS) e em repouso (Supabase)",
+        "sensitive": "Dados financeiros não criptografados (mas protegidos por RLS)",
+        "backup": "Automático via Supabase (conforme plano)"
+      },
+      "inputValidation": {
+        "frontend": "Zod schemas",
+        "backend": "Supabase constraints + triggers",
+        "sanitization": "Proteção contra XSS/SQL Injection"
+      },
+      "rateLimiting": {
+        "enabled": true,
+        "limits": {
+          "api": "100 req/min por usuário",
+          "auth": "5 tentativas de login / 15 min"
+        }
+      },
+      "compliance": {
+        "lgpd": true,
+        "gdpr": true,
+        "documents": [
+          "Termo de uso",
+          "Política de privacidade",
+          "Política de cookies"
+        ]
+      }
+    },
+
+    "performance": {
+      "targets": {
+        "firstContentfulPaint": "< 1.5s",
+        "largestContentfulPaint": "< 2.5s",
+        "timeToInteractive": "< 3.5s",
+        "cumulativeLayoutShift": "< 0.1"
+      },
+      "optimization": {
+        "images": "Next.js Image optimization",
+        "codesplitting": "Automático via Next.js",
+        "lazyLoading": "Componentes pesados (charts)",
+        "caching": "SWR para dados do dashboard",
+        "cdn": "Assets estáticos via Vercel Edge"
+      },
+      "monitoring": {
+        "tools": [
+          "Vercel Analytics",
+          "Web Vitals",
+          "Supabase Logs"
+        ]
+      }
+    },
+
+    "environments": {
+      "development": {
+        "database": "Supabase projeto separado (dev)",
+        "url": "localhost:3000",
+        "features": {
+          "debugMode": true,
+          "logs": "Verbose",
+          "hotReload": true
+        }
+      },
+      "staging": {
+        "database": "Supabase projeto separado (staging)",
+        "url": "staging.dominio.com (ou feature branch preview)",
+        "features": {
+          "visualIndicator": "Banner amarelo 'STAGING'",
+          "testData": "Seeds de teste",
+          "adminAccess": true
+        }
+      },
+      "production": {
+        "database": "Supabase projeto separado (prod)",
+        "url": "app.dominio.com",
+        "features": {
+          "visualIndicator": "Nenhum (ambiente padrão)",
+          "errorReporting": "Sentry ou similar",
+          "backup": "Automático diário"
+        }
+      },
+      "adminFeatures": {
+        "fullAccess": true,
+        "canViewAllUsers": true,
+        "canEditAnyData": true,
+        "debugLogs": true,
+        "featureFlags": true,
+        "preventDestructiveActions": [
+          "Confirmação dupla para deletar usuários",
+          "Soft delete ao invés de hard delete",
+          "Backup automático antes de operações em massa"
+        ]
+      }
+    },
+
+    "testing": {
+      "types": [
+        "Unit tests (componentes)",
+        "Integration tests (stores + API)",
+        "E2E tests (fluxos principais)",
+        "Visual regression tests"
+      ],
+      "tools": {
+        "unit": "Jest + React Testing Library",
+        "e2e": "Playwright ou Cypress",
+        "visual": "Percy ou Chromatic"
+      },
+      "coverage": {
+        "target": "80%+ para lógica crítica",
+        "priority": [
+          "Fluxo de autenticação",
+          "CRUD de transações",
+          "Cálculo de KPIs",
+          "Geração de insights"
+        ]
+      }
+    },
+
+    "cicd": {
+      "platform": "Vercel (integração automática com GitHub)",
+      "pipeline": [
+        "Lint + Type check",
+        "Unit tests",
+        "Build",
+        "Deploy preview (PRs)",
+        "Deploy production (main branch)"
+      ],
+      "preDeployChecks": [
+        "Migrations executadas com sucesso",
+        "Testes passando",
+        "Build sem erros",
+        "Lighthouse score > 90"
+      ]
+    }
+  },
+
+  "userInterface": {
+    "theme": {
+      "modes": [
+        "Claro",
+        "Escuro"
+      ],
+      "primaryColor": "Blue",
+      "customization": false
+    },
+    "responsiveness": {
+      "breakpoints": [
+        "Mobile (< 640px)",
+        "Tablet (640px - 1024px)",
+        "Desktop (> 1024px)"
+      ],
+      "mobileFirst": true
+    },
+    "accessibility": {
+      "wcagLevel": "AA",
+      "features": [
+        "Semântica HTML adequada",
+        "ARIA labels",
+        "Navegação por teclado",
+        "Contraste adequado",
+        "Foco visível"
+      ]
+    },
+    "internationalization": {
+      "mvp": "Português (pt-BR)",
+      "future": [
+        "Inglês (en-US)",
+        "Espanhol (es-ES)"
+      ]
+    }
+  },
+
+  "currency": {
+    "mvp": "BRL (Real Brasileiro)",
+    "future": [
+      "USD",
+      "EUR",
+      "Conversão automática com taxas de câmbio"
+    ]
+  },
+
+  "bestPractices": {
+    "codeQuality": {
+      "linting": "ESLint",
+      "formatting": "Prettier",
+      "typeChecking": "TypeScript strict mode",
+      "conventionalCommits": true,
+      "codeReviews": "Obrigatório para PRs"
+    },
+    "errorHandling": {
+      "userFacing": "Mensagens amigáveis via toast",
+      "logging": "Console errors + Sentry",
+      "fallbacks": "Loading states + error boundaries"
+    },
+    "dataIntegrity": {
+      "validation": "Frontend + Backend",
+      "transactions": "Atomic operations no Supabase",
+      "conflicts": "Optimistic updates com rollback"
+    },
+    "documentation": {
+      "code": "JSDoc para funções complexas",
+      "api": "OpenAPI/Swagger (se necessário)",
+      "userGuide": "Tutorial in-app + FAQ"
+    }
+  },
+
+  "limitations": {
+    "mvp": [
+      "Sem parcelamentos",
+      "Sem transações recorrentes automáticas",
+      "Sem integração bancária",
+      "Sem notificações push",
+      "Sem mobile app nativo",
+      "Sem múltiplas moedas",
+      "Sem subcategorias",
+      "Sem tags customizadas",
+      "Sem histórico de auditoria"
+    ],
+    "scalability": {
+      "maxUsers": "10.000 usuários ativos (estimativa Supabase free tier)",
+      "maxTransactionsPerUser": {
+        "free": 100,
+        "premium": "Ilimitado"
+      },
+      "databaseSize": "500MB (Supabase free tier)",
+      "upgradePath": "Migração para plano pago do Supabase + otimizações"
+    }
+  },
+
+  "risks": {
+    "technical": [
+      "Dependência do Supabase (vendor lock-in)",
+      "Limites do plano gratuito",
+      "Performance com muitos usuários simultâneos"
+    ],
+    "business": [
+      "Adoção de usuários",
+      "Competição com apps estabelecidos",
+      "Conversão de free para premium"
+    ],
+    "mitigations": [
+      "Backup regular dos dados",
+      "Monitoramento de uso e performance",
+      "Estratégia de marketing clara",
+      "Onboarding eficiente",
+      "Features diferenciadoras (IA, multi-usuário)"
+    ]
+  },
+
+  "nextSteps": {
+    "immediate": [
+      "Configurar testes automatizados com TestSprite",
+      "Validar fluxos críticos (auth, transações, dashboard)",
+      "Corrigir bugs identificados"
+    ],
+    "shortTerm": [
+      "Deploy em staging",
+      "Testes beta com usuários reais",
+      "Refinamento de UX baseado em feedback"
+    ],
+    "mediumTerm": [
+      "Implementação de features pós-MVP",
+      "Otimizações de performance",
+      "Marketing e aquisição de usuários"
+    ],
+    "longTerm": [
+      "Mobile app nativo",
+      "Integração Open Banking",
+      "Expansão internacional"
+    ]
+  }
+}
+
+

@@ -1,0 +1,222 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.75rem;
+  /* Tema Branco Gelo - Paleta suave e acolhedora inspirada em fintechs */
+  /* Background: Branco gelo (off-white suave) */
+  --background: oklch(0.98 0.003 264);
+  --foreground: oklch(0.18 0.002 264);
+  /* Cards: Branco puro com leve tom gelo */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.002 264);
+  /* Popover: Branco gelo */
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.002 264);
+  /* Primary: Gradiente roxo/violeta moderno (inspirado Nubank) */
+  --primary: oklch(0.45 0.18 295);
+  --primary-foreground: oklch(0.99 0 0);
+  --primary-hover: oklch(0.42 0.18 295);
+  /* Secondary: Cinza gelo suave */
+  --secondary: oklch(0.96 0.002 264);
+  --secondary-foreground: oklch(0.25 0.002 264);
+  /* Muted: Tons neutros gelo suaves */
+  --muted: oklch(0.94 0.002 264);
+  --muted-foreground: oklch(0.45 0.002 264);
+  /* Accent: Azul vibrante (inspirado Inter) */
+  --accent: oklch(0.65 0.18 230);
+  --accent-foreground: oklch(0.99 0 0);
+  /* Destructive: Vermelho moderno */
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  /* Success: Verde financeiro */
+  --success: oklch(0.60 0.18 145);
+  --success-foreground: oklch(0.99 0 0);
+  /* Warning: Amarelo/Âmbar */
+  --warning: oklch(0.70 0.18 75);
+  --warning-foreground: oklch(0.18 0.002 264);
+  /* Borders e Inputs: Tons gelo suaves */
+  --border: oklch(0.88 0.002 264);
+  --input: oklch(0.94 0.002 264);
+  --ring: oklch(0.45 0.18 295);
+  /* Charts: Paleta vibrante e moderna */
+  --chart-1: oklch(0.45 0.18 295); /* Roxo */
+  --chart-2: oklch(0.65 0.18 230); /* Azul */
+  --chart-3: oklch(0.60 0.18 145); /* Verde */
+  --chart-4: oklch(0.55 0.18 25); /* Vermelho */
+  --chart-5: oklch(0.70 0.18 75); /* Âmbar */
+  /* Sidebar: Branco gelo elegante */
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.18 0.002 264);
+  --sidebar-primary: oklch(0.45 0.18 295);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.96 0.002 264);
+  --sidebar-accent-foreground: oklch(0.25 0.002 264);
+  --sidebar-border: oklch(0.88 0.002 264);
+  --sidebar-ring: oklch(0.45 0.18 295);
+  /* Gradientes para uso em componentes */
+  --gradient-primary: linear-gradient(135deg, oklch(0.50 0.20 295) 0%, oklch(0.42 0.18 295) 100%);
+  --gradient-success: linear-gradient(135deg, oklch(0.65 0.20 145) 0%, oklch(0.55 0.18 145) 100%);
+  --gradient-card: linear-gradient(135deg, oklch(1 0 0) 0%, oklch(0.98 0.002 264) 100%);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  /* Tipografia melhorada */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+  
+  h1 {
+    @apply text-3xl lg:text-4xl;
+  }
+  
+  h2 {
+    @apply text-2xl lg:text-3xl;
+  }
+  
+  h3 {
+    @apply text-xl lg:text-2xl;
+  }
+  
+  /* Micro-interações suaves */
+  button, a {
+    @apply transition-all duration-200 ease-in-out;
+  }
+  
+  /* Cards com elevação moderna */
+  [data-slot="card"] {
+    @apply transition-all duration-300 ease-out;
+  }
+  
+  [data-slot="card"]:hover {
+    @apply shadow-lg -translate-y-0.5;
+  }
+  
+  /* Scrollbar moderna */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: oklch(0.96 0.002 264);
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.70 0.002 264);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.60 0.002 264);
+  }
+  
+  /* Transição suave entre temas - apenas elementos relevantes */
+  body,
+  [data-slot="card"],
+  button,
+  input,
+  select,
+  textarea {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  }
+}
+
+/* Scrollbar para dark mode */
+.dark ::-webkit-scrollbar-track {
+  background: oklch(0.20 0 0);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(0.50 0 0);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.60 0 0);
+}
