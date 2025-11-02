@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Busca receitas recorrentes ativas
-    let query = supabase
+    let query = (supabase as any)
       .from('recurring_incomes')
       .select('*')
       .eq('user_id', user.id)

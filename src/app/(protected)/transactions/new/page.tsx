@@ -220,10 +220,10 @@ export default function NewTransactionPage() {
 
     // Validação completa
     const errors: ValidationErrors = {}
-    errors.description = validateField('description', formData.description)
-    errors.amount = validateField('amount', formData.amount)
-    errors.categoryId = validateField('categoryId', formData.categoryId)
-    errors.paymentMethod = validateField('paymentMethod', formData.paymentMethod)
+    errors.description = validateField('description', formData.description) || undefined
+    errors.amount = validateField('amount', formData.amount) || undefined
+    errors.categoryId = validateField('categoryId', formData.categoryId) || undefined
+    errors.paymentMethod = validateField('paymentMethod', formData.paymentMethod) || undefined
 
     if ((formData.paymentMethod === 'credit' || formData.paymentMethod === 'debit') && !cardId) {
       errors.paymentMethod = 'Selecione um cartão para pagamentos de Crédito/Débito'

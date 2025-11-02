@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('recurring_incomes')
       .select('*')
       .eq('user_id', user.id)
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
       is_active: body.is_active !== undefined ? body.is_active : true,
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('recurring_incomes')
       .insert([insertData])
       .select()

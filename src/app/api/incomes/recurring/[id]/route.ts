@@ -26,7 +26,7 @@ export async function GET(
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('recurring_incomes')
       .select('*')
       .eq('id', id)
@@ -75,7 +75,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Valor deve ser maior que zero' }, { status: 400 })
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('recurring_incomes')
       .update(body)
       .eq('id', id)
@@ -114,7 +114,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from('recurring_incomes')
       .delete()
       .eq('id', id)
