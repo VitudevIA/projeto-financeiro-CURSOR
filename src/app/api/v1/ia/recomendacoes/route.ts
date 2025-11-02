@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
 
     // Calcula score de saúde (necessário para recomendações)
     const transactionsData = (transactions || []).map(t => ({
-      amount: String(t.amount),
+      amount: Number(t.amount),
       type: t.type as 'income' | 'expense',
       date: t.transaction_date,
       category_id: t.category_id,
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
 
     const budgetsData = (budgets || []).map(b => ({
       category_id: b.category_id,
-      limit_amount: String(b.limit_amount),
+      limit_amount: Number(b.limit_amount),
       month: b.month,
     }));
 
