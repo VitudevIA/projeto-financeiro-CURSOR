@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState } from 'react'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
@@ -14,17 +14,12 @@ import { Plus, Trash2, Edit, Filter, Download } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ImportTransactionsModal } from '@/components/forms/import-transactions-modal'
-import { useState } from 'react'
 
 export default function TransactionsPage() {
   const { transactions, loading, error, fetchTransactions, deleteTransaction } = useTransactionsStore()
   const { categories } = useCategoriesStore()
   const { cards, fetchCards } = useCardsStore()
-<<<<<<< HEAD
   const [importModalOpen, setImportModalOpen] = useState(false)
-=======
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
-
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
@@ -239,11 +234,7 @@ export default function TransactionsPage() {
               <Link href="/transactions/new">
                 <Button>
                   <Plus className="w-4 h-4 mr-2" />
-<<<<<<< HEAD
                   Criar Primeira Despesa
-=======
-                  Criar Primeira Transação
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
                 </Button>
               </Link>
             </div>
@@ -309,8 +300,6 @@ export default function TransactionsPage() {
           )}
         </CardContent>
       </Card>
-<<<<<<< HEAD
-
       {/* Modal de Importação */}
       <ImportTransactionsModal
         open={importModalOpen}
@@ -319,8 +308,6 @@ export default function TransactionsPage() {
           fetchTransactions(filters)
         }}
       />
-=======
->>>>>>> 0e8581193d55c61b702ceb359b50572dc05656c8
     </div>
   )
 }
