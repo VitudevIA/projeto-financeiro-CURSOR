@@ -20,13 +20,14 @@ interface ForecastPeriod {
 
 interface ForecastData {
   forecast: ForecastPeriod[]
-  metadata: {
+  metadata?: {
     historicalPeriods: number
     forecastPeriods: number
     avgMonthlyExpenses: number
     avgMonthlyIncome: number
     trend: 'increasing' | 'decreasing' | 'stable'
   }
+  message?: string
 }
 
 export default function ForecastChart() {
@@ -88,7 +89,7 @@ export default function ForecastChart() {
 
   const { forecast, metadata } = data
 
-  if (forecast.length === 0) {
+  if (forecast.length === 0 || !metadata) {
     return (
       <Card>
         <CardHeader>
