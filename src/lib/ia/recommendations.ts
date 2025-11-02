@@ -214,7 +214,7 @@ function generateSavingsRecommendations(
 function generateBudgetRecommendations(
   transactions: TransactionData[],
   budgets: BudgetData[],
-  topCategories: Array<{ category_id: string; total: number }>
+  topCategories: Array<{ category_id: string; category_name?: string; total: number }>
 ): Recommendation[] {
   const recommendations: Recommendation[] = [];
 
@@ -281,7 +281,7 @@ function generateDebtRecommendations(debtScore: number): Recommendation[] {
 }
 
 function generateCategoryRecommendations(
-  topCategories: Array<{ category_id: string; total: number }>,
+  topCategories: Array<{ category_id: string; category_name?: string; total: number }>,
   totalExpenses: number
 ): Recommendation[] {
   const recommendations: Recommendation[] = [];
