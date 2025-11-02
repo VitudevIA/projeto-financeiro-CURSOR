@@ -31,7 +31,6 @@ export interface Transaction {
   updated_at: string | null
 }
 
-<<<<<<< HEAD
 export interface RecurringIncome {
   id: string
   user_id: string
