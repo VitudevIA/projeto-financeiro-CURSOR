@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
 
     const budgetsData = (budgets || []).map(b => ({
       category_id: b.category_id,
-      limit_amount: String(b.limit_amount),
+      limit_amount: Number(b.limit_amount),
     }));
 
     // Detecta anomalias
