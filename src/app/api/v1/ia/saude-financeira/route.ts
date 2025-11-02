@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
 
     // Prepara dados para cálculo
     const transactionsData = (transactions || []).map(t => ({
-      amount: String(t.amount),
+      amount: Number(t.amount),
       type: t.type as 'income' | 'expense',
       date: t.transaction_date,
       category_id: t.category_id,
@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
 
     const budgetsData = (budgets || []).map(b => ({
       category_id: b.category_id,
-      limit_amount: String(b.limit_amount),
+      limit_amount: Number(b.limit_amount),
       month: b.month,
     }));
 
@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
     }));
 
     const previousTransactionsData = (previousTransactions || []).map(t => ({
-      amount: String(t.amount),
+      amount: Number(t.amount),
       type: t.type as 'income' | 'expense',
       date: t.transaction_date,
       category_id: t.category_id,
