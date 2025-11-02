@@ -141,6 +141,13 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // Garante que categoryId não é null antes de inserir
+        if (!categoryId) {
+          errorCount++
+          errors.push(`Não foi possível criar categoria para: ${transaction.descricao}`)
+          continue
+        }
+
         // Valida método de pagamento
         const paymentMethod = String(transaction.metodo_pagamento || 'cash').toLowerCase()
         const validMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
