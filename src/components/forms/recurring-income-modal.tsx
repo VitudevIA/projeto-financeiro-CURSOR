@@ -100,7 +100,7 @@ export function RecurringIncomeModal({
     }
 
     // Se não houver categoria, usa a primeira categoria de receita disponível ou cria uma padrão
-    let categoryId = formData.category_id
+    let categoryId: string | undefined = formData.category_id
     if (!categoryId) {
       if (incomeCategories.length > 0) {
         // Usa a primeira categoria de receita disponível
