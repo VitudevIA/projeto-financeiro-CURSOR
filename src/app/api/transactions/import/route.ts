@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import * as XLSX from 'xlsx'
 import { extractTextFromPDF, parseCreditCardBill, ExtractedTransaction } from '@/utils/pdf-parser'
-import { recognizeCategory } from '@/utils/category-recognition'
+import { recognizeCategory, recognizeCategoryLegacy } from '@/utils/category-recognition'
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,13 +26,86 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData()
     const file = formData.get('file') as File
+    const paymentMethodFromForm = formData.get('paymentMethod') as string
+    const cardIdFromForm = formData.get('cardId') as string
 
     if (!file) {
       return NextResponse.json({ error: 'Nenhum arquivo fornecido' }, { status: 400 })
     }
 
+    // Valida método de pagamento obrigatório
+    if (!paymentMethodFromForm) {
+      return NextResponse.json({ error: 'Método de pagamento é obrigatório' }, { status: 400 })
+    }
+
+    // Valida cartão obrigatório para crédito/débito
+    if ((paymentMethodFromForm === 'credit' || paymentMethodFromForm === 'debit') && !cardIdFromForm) {
+      return NextResponse.json({ error: 'Cartão é obrigatório para pagamentos com cartão' }, { status: 400 })
+    }
+
+    // Valida se o cartão existe e pertence ao usuário
+    let validatedCardId: string | null = null
+    if (cardIdFromForm) {
+      const { data: cardData, error: cardError } = await supabase
+        .from('cards')
+        .select('id, type, user_id')
+        .eq('id', cardIdFromForm)
+        .eq('user_id', user.id)
+        .single()
+
+      if (cardError || !cardData) {
+        return NextResponse.json({ error: 'Cartão não encontrado ou inválido' }, { status: 400 })
+      }
+
+      // Valida se o tipo do cartão corresponde ao método de pagamento
+      if (cardData.type !== paymentMethodFromForm) {
+        return NextResponse.json({ 
+          error: `Cartão selecionado é de ${cardData.type === 'credit' ? 'crédito' : 'débito'}, mas o método selecionado é ${paymentMethodFromForm === 'credit' ? 'crédito' : 'débito'}` 
+        }, { status: 400 })
+      }
+
+      validatedCardId = cardData.id
+    }
+
     const fileName = file.name.toLowerCase()
     let transactions: any[] = []
+    
+    // Variável para uso no processamento das transações
+    const finalCardId = validatedCardId
+
+    // Busca categorias do usuário e histórico ANTES de processar arquivo
+    // Necessário para reconhecimento inteligente de categorias
+    const { data: userCategories } = await supabase
+      .from('categories')
+      .select('id, name, type')
+      .eq('user_id', user.id)
+
+    const categoryMap = new Map<string, string>()
+    userCategories?.forEach((cat) => {
+      categoryMap.set(cat.name.toLowerCase(), cat.id)
+    })
+
+    // Busca histórico de transações para melhorar reconhecimento de categorias
+    // Últimas 500 transações para análise de padrões
+    const { data: transactionHistory } = await supabase
+      .from('transactions')
+      .select(`
+        description,
+        category_id,
+        categories:categories(id, name)
+      `)
+      .eq('user_id', user.id)
+      .eq('type', 'expense')
+      .not('category_id', 'is', null)
+      .order('transaction_date', { ascending: false })
+      .limit(500)
+
+    // Prepara histórico formatado para o reconhecimento
+    const formattedHistory = transactionHistory?.map(t => ({
+      description: t.description,
+      category_id: t.category_id,
+      category_name: (t.categories as any)?.name || ''
+    })).filter(h => h.category_name) || []
 
     try {
       if (fileName.endsWith('.pdf')) {
@@ -57,21 +130,38 @@ export async function POST(request: NextRequest) {
           
           // Converte transações extraídas para o formato esperado
           // IMPORTANTE: Quando vem de PDF, o valor já é da parcela individual, não deve ser dividido
-          transactions = extractedTransactions.map((trans) => ({
-            data: trans.date,
-            descricao: trans.description,
-            valor: trans.amount.toFixed(2), // Valor já é da parcela individual, não dividir!
-            metodo_pagamento: 'credit', // PDFs são sempre de cartão de crédito
-            categoria: recognizeCategory(trans.description),
-            cartao: '', // Pode ser identificado no futuro
-            natureza_despesa: trans.installments ? 'installment' : 'variable',
-            total_parcelas: trans.installments?.total || '',
-            parcela_atual: trans.installments?.current || '',
-            observacoes: trans.installments 
-              ? `Importado de PDF. Parcela ${trans.installments.current}/${trans.installments.total}`
-              : 'Importado de PDF',
-            _fromPDF: true, // Flag para indicar que vem de PDF (não gerar parcelas automaticamente)
-          }))
+          // Reconhece categorias de forma inteligente usando histórico e categorias reais
+          const categoryResults = await Promise.all(
+            extractedTransactions.map(trans => 
+              recognizeCategory(
+                trans.description,
+                userCategories || [],
+                formattedHistory
+              )
+            )
+          )
+
+          transactions = extractedTransactions.map((trans, index) => {
+            const categoryResult = categoryResults[index]
+            return {
+              data: trans.date,
+              descricao: trans.description,
+              valor: trans.amount.toFixed(2), // Valor já é da parcela individual, não dividir!
+              metodo_pagamento: paymentMethodFromForm, // Usa método selecionado pelo usuário
+              categoria: categoryResult.categoryName || recognizeCategoryLegacy(trans.description),
+              categoria_id: categoryResult.categoryId || null, // ID direto se encontrado
+              cartao: finalCardId || '', // ID do cartão selecionado
+              natureza_despesa: trans.installments ? 'installment' : 'variable',
+              total_parcelas: trans.installments?.total || '',
+              parcela_atual: trans.installments?.current || '',
+              observacoes: trans.installments 
+                ? `Importado de PDF. Parcela ${trans.installments.current}/${trans.installments.total}`
+                : 'Importado de PDF',
+              _fromPDF: true, // Flag para indicar que vem de PDF (não gerar parcelas automaticamente)
+              _paymentMethod: paymentMethodFromForm, // Método de pagamento para uso na inserção
+              _cardId: finalCardId, // ID do cartão para uso na inserção
+            }
+          })
         } catch (pdfError) {
           // Extrai mensagem de erro sem encadear múltiplas vezes
           let errorMessage = 'Erro desconhecido ao processar PDF'
@@ -119,17 +209,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhuma transação encontrada no arquivo' }, { status: 400 })
     }
 
-    // Busca categorias do usuário para mapear
-    const { data: userCategories } = await supabase
-      .from('categories')
-      .select('id, name')
-      .eq('user_id', user.id)
-
-    const categoryMap = new Map<string, string>()
-    userCategories?.forEach((cat) => {
-      categoryMap.set(cat.name.toLowerCase(), cat.id)
-    })
-
     // Processa e insere transações
     let successCount = 0
     let errorCount = 0
@@ -166,27 +245,47 @@ export async function POST(request: NextRequest) {
 
         // Busca ou cria categoria
         let categoryId: string | null = null
-        if (transaction.categoria) {
+        
+        // Prioridade 1: Se já tem categoria_id (reconhecimento inteligente funcionou)
+        if ((transaction as any).categoria_id) {
+          categoryId = (transaction as any).categoria_id
+        }
+        // Prioridade 2: Busca por nome da categoria
+        else if (transaction.categoria) {
           const catName = String(transaction.categoria).toLowerCase()
           categoryId = categoryMap.get(catName) || null
 
-          // Se não encontrar, cria uma nova categoria
+          // Se não encontrar, tenta reconhecimento inteligente novamente (pode ter melhorado)
           if (!categoryId) {
-            const { data: newCat } = await supabase
-              .from('categories')
-              .insert([
-                {
-                  name: String(transaction.categoria),
-                  type: 'expense',
-                  user_id: user.id,
-                },
-              ])
-              .select('id')
-              .single()
+            const categoryResult = await recognizeCategory(
+              String(transaction.descricao),
+              userCategories || [],
+              formattedHistory
+            )
+            
+            if (categoryResult.categoryId) {
+              categoryId = categoryResult.categoryId
+            } else {
+              // Se ainda não encontrar, cria uma nova categoria apenas se o nome for válido
+              const catNameToCreate = String(transaction.categoria).trim()
+              if (catNameToCreate && catNameToCreate !== 'Categoria não encontrada' && catNameToCreate !== 'Outros') {
+                const { data: newCat } = await supabase
+                  .from('categories')
+                  .insert([
+                    {
+                      name: catNameToCreate,
+                      type: 'expense',
+                      user_id: user.id,
+                    },
+                  ])
+                  .select('id')
+                  .single()
 
-            if (newCat) {
-              categoryId = newCat.id
-              categoryMap.set(catName, categoryId)
+                if (newCat) {
+                  categoryId = newCat.id
+                  categoryMap.set(catName, categoryId)
+                }
+              }
             }
           }
         }
@@ -230,7 +329,9 @@ export async function POST(request: NextRequest) {
         }
 
         // Valida método de pagamento
-        const paymentMethod = String(transaction.metodo_pagamento || 'cash').toLowerCase()
+        // Prioriza método passado via FormData (para PDFs), senão usa o do transaction
+        const paymentMethodFromTransaction = (transaction as any)._paymentMethod || transaction.metodo_pagamento
+        const paymentMethod = String(paymentMethodFromTransaction || 'cash').toLowerCase()
         const validMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
         const validatedMethod = validMethods.includes(paymentMethod) ? paymentMethod : 'cash'
 
@@ -293,14 +394,22 @@ export async function POST(request: NextRequest) {
         }
 
         // Busca cartão se especificado (apenas para crédito/débito)
+        // Prioriza cardId passado via FormData (para PDFs), senão busca pelo nome
         let cardId: string | null = null
-        if ((validatedMethod === 'credit' || validatedMethod === 'debit') && transaction.cartao) {
+        
+        // Prioridade 1: CardId passado diretamente via FormData (para PDFs)
+        if ((transaction as any)._cardId) {
+          cardId = (transaction as any)._cardId
+        }
+        // Prioridade 2: Busca pelo nome do cartão (para CSV/XLSX)
+        else if ((validatedMethod === 'credit' || validatedMethod === 'debit') && transaction.cartao) {
           const cardName = String(transaction.cartao).trim()
           if (cardName) {
             const { data: userCards } = await supabase
               .from('cards')
-              .select('id, name')
+              .select('id, name, type')
               .eq('user_id', user.id)
+              .eq('type', validatedMethod) // Filtra pelo tipo correto
 
             const matchedCard = userCards?.find(
               (card) => card.name.toLowerCase() === cardName.toLowerCase()
@@ -313,6 +422,10 @@ export async function POST(request: NextRequest) {
               // Por enquanto, deixa null e continua
             }
           }
+        }
+        // Prioridade 3: Se é crédito/débito mas não tem cartão, usa o validado do FormData
+        else if ((validatedMethod === 'credit' || validatedMethod === 'debit') && finalCardId) {
+          cardId = finalCardId
         }
 
         // Se deve gerar automaticamente todas as parcelas
@@ -331,6 +444,9 @@ export async function POST(request: NextRequest) {
 
             const installmentDescription = `${String(transaction.descricao)} (${i + 1}/${totalInstallments})`
 
+            // IMPORTANTE: card_id deve ser null para métodos que não são crédito/débito
+            const finalCardIdForInstallment = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
+            
             const { error: insertError } = await supabase.from('transactions').insert([
               {
                 user_id: user.id,
@@ -340,7 +456,7 @@ export async function POST(request: NextRequest) {
                 category_id: categoryId,
                 transaction_date: installmentDate.toISOString().split('T')[0],
                 payment_method: validatedMethod,
-                card_id: cardId,
+                card_id: finalCardIdForInstallment, // Null para métodos que não são cartão
                 expense_nature: 'installment',
                 installment_number: i + 1,
                 total_installments: totalInstallments,
@@ -377,6 +493,9 @@ export async function POST(request: NextRequest) {
           }
 
           // Insere transação
+          // IMPORTANTE: card_id deve ser null para métodos que não são crédito/débito
+          const finalCardIdForInsert = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
+          
           const { error: insertError } = await supabase.from('transactions').insert([
             {
               user_id: user.id,
@@ -386,7 +505,7 @@ export async function POST(request: NextRequest) {
               category_id: categoryId,
               transaction_date: formatDate(String(transaction.data)),
               payment_method: validatedMethod,
-              card_id: cardId,
+              card_id: finalCardIdForInsert, // Null para métodos que não são cartão
               expense_nature: validatedExpenseNature,
               installment_number: installmentNumber,
               total_installments: totalInstallments,
