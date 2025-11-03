@@ -41,7 +41,24 @@ export const useAuthStore = create<AuthState>()(
 
           if (error) {
             set({ loading: false })
-            return { error: error.message }
+            console.error('Erro no login do Supabase:', {
+              message: error.message,
+              status: error.status,
+              name: error.name
+            })
+            
+            // Mensagens de erro mais específicas
+            if (error.status === 401) {
+              return { error: 'Email ou senha incorretos. Verifique suas credenciais.' }
+            }
+            if (error.message?.includes('Email not confirmed')) {
+              return { error: 'Por favor, confirme seu email antes de fazer login. Verifique sua caixa de entrada.' }
+            }
+            if (error.message?.includes('Invalid login credentials')) {
+              return { error: 'Email ou senha incorretos. Verifique suas credenciais.' }
+            }
+            
+            return { error: error.message || 'Erro ao fazer login. Tente novamente.' }
           }
 
           if (data.user) {

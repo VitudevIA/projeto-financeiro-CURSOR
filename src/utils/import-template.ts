@@ -12,10 +12,12 @@ export function generateImportTemplate(format: 'csv' | 'xlsx' = 'xlsx') {
     'categoria',
     'cartao',
     'natureza_despesa',
+    'total_parcelas',
+    'parcela_atual',
     'observacoes',
   ]
 
-  // Exemplos de dados
+  // Exemplos de dados incluindo transações parceladas
   const examples = [
     {
       data: '2025-01-15',
@@ -24,7 +26,9 @@ export function generateImportTemplate(format: 'csv' | 'xlsx' = 'xlsx') {
       metodo_pagamento: 'credit',
       categoria: 'Alimentação',
       cartao: '',
-      natureza_despesa: 'Essencial',
+      natureza_despesa: 'variable',
+      total_parcelas: '',
+      parcela_atual: '',
       observacoes: 'Compras do mês',
     },
     {
@@ -34,8 +38,34 @@ export function generateImportTemplate(format: 'csv' | 'xlsx' = 'xlsx') {
       metodo_pagamento: 'pix',
       categoria: 'Utilidades',
       cartao: '',
-      natureza_despesa: 'Essencial',
+      natureza_despesa: 'fixed',
+      total_parcelas: '',
+      parcela_atual: '',
       observacoes: '',
+    },
+    {
+      data: '2025-01-25',
+      descricao: 'Notebook Dell',
+      valor: '3000.00',
+      metodo_pagamento: 'credit',
+      categoria: 'Eletrônicos',
+      cartao: 'Cartão Nubank',
+      natureza_despesa: 'installment',
+      total_parcelas: '10',
+      parcela_atual: '1',
+      observacoes: 'Compra parcelada em 10x sem juros - CRIARÁ 10 PARCELAS AUTOMATICAMENTE',
+    },
+    {
+      data: '2025-03-15',
+      descricao: 'TV 55 polegadas',
+      valor: '2500.00',
+      metodo_pagamento: 'credit',
+      categoria: 'Eletrônicos',
+      cartao: 'Cartão Itau',
+      natureza_despesa: 'installment',
+      total_parcelas: '5',
+      parcela_atual: '',
+      observacoes: 'Compra parcelada em 5x - CRIARÁ 5 PARCELAS AUTOMATICAMENTE (deixe parcela_atual vazio)',
     },
   ]
 

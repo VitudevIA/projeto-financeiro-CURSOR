@@ -58,21 +58,51 @@ const nextConfig: NextConfig = {
     ]
   },
 
-  // Bundle analyzer (apenas em build)
-  ...(process.env.ANALYZE === 'true' && {
-    webpack: (config: any, { isServer }: any) => {
-      if (!isServer) {
-        const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
-        config.plugins.push(
-          new BundleAnalyzerPlugin({
-            analyzerMode: 'static',
-            reportFilename: '../analyze/client.html',
-          })
-        )
+  // Configuração do Turbopack (Next.js 16+ usa Turbopack por padrão)
+  turbopack: {},
+
+  // Configuração do webpack (fallback quando --webpack é usado)
+  webpack: (config: any, { isServer }: any) => {
+    // Bundle analyzer (apenas em build)
+    if (process.env.ANALYZE === 'true' && !isServer) {
+      const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer')
+      config.plugins.push(
+        new BundleAnalyzerPlugin({
+          analyzerMode: 'static',
+          reportFilename: '../analyze/client.html',
+        })
+      )
+    }
+
+    // Garante que pdf-parse só seja usado no servidor
+    // pdf-parse usa bibliotecas nativas do Node.js e não pode ser bundlado no cliente
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        crypto: false,
       }
-      return config
-    },
-  }),
+      
+      // Exclui pdf-parse do bundle do cliente
+      config.externals = config.externals || []
+      if (typeof config.externals === 'function') {
+        const originalExternals = config.externals
+        config.externals = [
+          originalExternals,
+          ({ request }: any) => {
+            if (request === 'pdf-parse') {
+              return 'commonjs pdf-parse'
+            }
+          },
+        ]
+      } else {
+        config.externals.push('pdf-parse')
+      }
+    }
+    
+    return config
+  },
 }
 
 export default nextConfig

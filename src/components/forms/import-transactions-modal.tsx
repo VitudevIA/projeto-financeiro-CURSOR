@@ -43,10 +43,14 @@ export function ImportTransactionsModal({
 
     // Valida extensão
     const fileName = file.name.toLowerCase()
-    const isValidFormat = fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')
+    const isValidFormat = 
+      fileName.endsWith('.csv') || 
+      fileName.endsWith('.xlsx') || 
+      fileName.endsWith('.xls') ||
+      fileName.endsWith('.pdf')
     
     if (!isValidFormat) {
-      toast.error('Formato inválido. Use CSV ou XLSX.')
+      toast.error('Formato inválido. Use CSV, XLSX ou PDF (fatura de cartão).')
       return
     }
 
@@ -96,7 +100,9 @@ export function ImportTransactionsModal({
         <DialogHeader>
           <DialogTitle>Importar Despesas</DialogTitle>
           <DialogDescription>
-            Importe múltiplas despesas de uma vez usando uma planilha CSV ou XLSX
+            Importe múltiplas despesas de uma vez usando uma planilha CSV ou XLSX, 
+            ou importe diretamente uma fatura de cartão de crédito em PDF.
+            O modelo inclui suporte para transações parceladas.
           </DialogDescription>
         </DialogHeader>
 
@@ -145,12 +151,13 @@ export function ImportTransactionsModal({
               <div className="flex-1">
                 <h3 className="font-semibold mb-1">Importar Despesas</h3>
                 <p className="text-sm text-muted-foreground mb-3">
-                  Selecione um arquivo CSV ou XLSX preenchido com suas despesas
+                  Selecione um arquivo CSV, XLSX ou PDF (fatura de cartão). 
+                  Para PDFs, as transações serão extraídas automaticamente com categorias e parcelamento.
                 </p>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.xlsx,.xls"
+                  accept=".csv,.xlsx,.xls,.pdf"
                   onChange={handleFileSelect}
                   className="hidden"
                 />
@@ -170,11 +177,14 @@ export function ImportTransactionsModal({
           <div className="bg-muted/50 rounded-lg p-4 space-y-2">
             <h4 className="font-semibold text-sm">Instruções:</h4>
             <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-              <li>Baixe o modelo e preencha com suas despesas</li>
-              <li>Mantenha o formato original (não altere as colunas)</li>
-              <li>Data no formato: AAAA-MM-DD (ex: 2025-01-15)</li>
-              <li>Valor em número decimal (ex: 150.50)</li>
-              <li>Método de pagamento: credit, debit, cash, pix ou boleto</li>
+              <li><strong>CSV/XLSX:</strong> Baixe o modelo e preencha com suas despesas</li>
+              <li><strong>CSV/XLSX:</strong> Mantenha o formato original (não altere as colunas)</li>
+              <li><strong>CSV/XLSX:</strong> Data no formato: AAAA-MM-DD (ex: 2025-01-15)</li>
+              <li><strong>CSV/XLSX:</strong> Valor em número decimal (ex: 150.50)</li>
+              <li><strong>CSV/XLSX:</strong> Método de pagamento: credit, debit, cash, pix ou boleto</li>
+              <li><strong>PDF:</strong> Envie a fatura do seu cartão de crédito em PDF</li>
+              <li><strong>PDF:</strong> As transações serão extraídas automaticamente</li>
+              <li><strong>PDF:</strong> Categorias e parcelamento serão reconhecidos automaticamente</li>
               <li>As linhas com dados inválidos serão ignoradas</li>
             </ul>
           </div>
