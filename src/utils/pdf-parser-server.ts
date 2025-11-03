@@ -53,72 +53,18 @@ export async function extractTextFromPDFServer(buffer: Buffer): Promise<string> 
     }
 
     // Importa pdf-parse dinamicamente
-    // CRÍTICO: pdf-parse/index.js tem código que verifica !module.parent
-    // Se module.parent não existir, entra em modo debug e tenta ler arquivo de teste
-    // SOLUÇÃO: Importar diretamente de lib/pdf-parse.js que não tem esse código problemático
+    // IMPORTANTE: Usa require estático para compatibilidade com Turbopack
+    // Next.js permite require em API routes/server components
+    // Para Turbopack, precisamos usar require direto sem caminhos dinâmicos
     
     let pdfParse: any
     try {
-      const path = require('path')
-      const fs = require('fs')
+      // Usa require direto do pacote (compatível com Turbopack)
+      // Next.js e Turbopack conseguem resolver isso corretamente em server components
+      const pdfParseModule = require('pdf-parse')
       
-      // Resolve o caminho do pdf-parse instalado
-      let pdfParseLibPath: string
-      try {
-        // Tenta encontrar o arquivo lib/pdf-parse.js diretamente
-        const pdfParseMainPath = require.resolve('pdf-parse')
-        pdfParseLibPath = path.join(path.dirname(pdfParseMainPath), 'lib', 'pdf-parse.js')
-        
-        // Verifica se o arquivo existe
-        if (!fs.existsSync(pdfParseLibPath)) {
-          throw new Error(`Arquivo lib/pdf-parse.js não encontrado em: ${pdfParseLibPath}`)
-        }
-        
-        // Limpa cache para garantir que não há problemas
-        if (require.cache[pdfParseLibPath]) {
-          delete require.cache[pdfParseLibPath]
-        }
-        if (require.cache[pdfParseMainPath]) {
-          delete require.cache[pdfParseMainPath]
-        }
-        
-        // Importa diretamente do arquivo lib (evita o index.js problemático)
-        // lib/pdf-parse.js exporta a função diretamente via module.exports
-        pdfParse = require(pdfParseLibPath)
-        
-        // Valida que conseguimos a função
-        if (typeof pdfParse !== 'function') {
-          throw new Error(`lib/pdf-parse.js não exportou uma função. Tipo: ${typeof pdfParse}`)
-        }
-        
-        console.log('[PDF Parser] pdf-parse carregado diretamente de lib/pdf-parse.js (evitando modo debug)')
-      } catch (libError) {
-        // Fallback: se não conseguir do lib, tenta require normal
-        // Mas antes, garante que module.parent existe para evitar modo debug
-        console.warn('[PDF Parser] Fallback: usando require normal, garantindo module.parent:', libError)
-        
-        // Cria um módulo filho fictício para garantir que module.parent existe
-        const Module = require('module')
-        const currentModule = module
-        
-        // Garante que temos parent definido
-        if (!currentModule.parent) {
-          // Cria um parent temporário
-          ;(currentModule as any).parent = {
-            id: __filename,
-            filename: __filename,
-            loaded: false,
-          }
-        }
-        
-        try {
-          const pdfParseModule = require('pdf-parse')
-          pdfParse = pdfParseModule?.default || pdfParseModule
-        } finally {
-          // Restaura estado original se necessário
-          // (não precisamos fazer nada aqui normalmente)
-        }
-      }
+      // Extrai a função de diferentes formatos de exportação
+      pdfParse = pdfParseModule?.default || pdfParseModule?.pdfParse || pdfParseModule
       
       // Valida que conseguimos uma função
       if (typeof pdfParse !== 'function') {
@@ -135,6 +81,8 @@ export async function extractTextFromPDFServer(buffer: Buffer): Promise<string> 
           )
         }
       }
+      
+      console.log('[PDF Parser] pdf-parse carregado com sucesso')
     } catch (requireError) {
       const errorMsg = requireError instanceof Error ? requireError.message : 'Erro desconhecido'
       const errorStack = requireError instanceof Error ? requireError.stack : undefined

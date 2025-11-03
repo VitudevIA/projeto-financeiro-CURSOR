@@ -60,6 +60,10 @@ const nextConfig: NextConfig = {
 
   // Configuração do Turbopack (Next.js 16+ usa Turbopack por padrão)
   turbopack: {},
+  
+  // Pacotes externos para server components (evita bundle no servidor)
+  // pdf-parse deve ser tratado como externo pois usa módulos nativos do Node.js
+  serverExternalPackages: ['pdf-parse'],
 
   // Configuração do webpack (fallback quando --webpack é usado)
   webpack: (config: any, { isServer }: any) => {
@@ -98,6 +102,16 @@ const nextConfig: NextConfig = {
         ]
       } else {
         config.externals.push('pdf-parse')
+      }
+    }
+    
+    // No servidor, permite require de módulos CommonJS
+    if (isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        path: false,
+        crypto: false,
       }
     }
     
