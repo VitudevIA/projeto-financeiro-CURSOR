@@ -15,6 +15,8 @@ import { Download, Upload, FileSpreadsheet, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import { generateImportTemplate } from '@/utils/import-template'
 import { useCardsStore } from '@/lib/stores/cards-store'
+import { useDashboardStore } from '@/lib/stores/dashboard-store'
+import { useAuthStore } from '@/lib/stores/auth-store'
 
 interface ImportTransactionsModalProps {
   open: boolean
@@ -36,6 +38,8 @@ export function ImportTransactionsModal({
   }>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { cards, fetchCards } = useCardsStore()
+  const { fetchDashboardData } = useDashboardStore()
+  const { user } = useAuthStore()
 
   // Carrega cartões quando o modal abre
   useEffect(() => {
@@ -142,6 +146,17 @@ export function ImportTransactionsModal({
       setPaymentMethod('')
       setCardId('')
       setValidationErrors({})
+
+      // Atualiza Dashboard após importação bem-sucedida
+      if (user && fetchDashboardData) {
+        try {
+          await fetchDashboardData(user)
+          console.log('✅ Dashboard atualizado após importação')
+        } catch (error) {
+          console.error('⚠️ Erro ao atualizar Dashboard após importação:', error)
+          // Não bloqueia o fluxo, apenas loga o erro
+        }
+      }
 
       onImportSuccess?.()
       onOpenChange(false)

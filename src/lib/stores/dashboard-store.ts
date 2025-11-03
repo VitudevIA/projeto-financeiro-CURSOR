@@ -46,6 +46,18 @@ const getCategoryColor = (index: number): string => {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length]
 }
 
+// Função auxiliar para garantir que amount seja sempre um número
+const ensureNumber = (value: any): number => {
+  if (typeof value === 'number') {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value)
+    return isNaN(parsed) ? 0 : parsed
+  }
+  return 0
+}
+
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   kpis: null,
   timeSeriesData: [],
@@ -88,6 +100,18 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         .gte('transaction_date', start)
         .lte('transaction_date', end)
         .order('transaction_date', { ascending: true })
+      
+      console.log(`📊 Dashboard: ${transactions?.length || 0} transações encontradas no período ${start} até ${end}`)
+      if (transactions && transactions.length > 0) {
+        console.log(`📊 Dashboard: Primeira transação:`, {
+          id: transactions[0].id,
+          description: transactions[0].description,
+          amount: transactions[0].amount,
+          type: transactions[0].type,
+          date: transactions[0].transaction_date,
+          category: transactions[0].category?.name || 'Sem categoria'
+        })
+      }
 
       if (transactionsError) {
         console.error('Erro ao buscar transações:', transactionsError)
@@ -116,10 +140,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       let totalSpent = 0
       
       transactions?.forEach((transaction: any) => {
+        const amount = ensureNumber(transaction.amount)
+        
         if (transaction.type === 'income') {
-          totalIncome += transaction.amount || 0
+          totalIncome += amount
         } else if (transaction.type === 'expense') {
-          totalSpent += transaction.amount || 0
+          totalSpent += amount
         }
       })
       
@@ -167,9 +193,12 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       // Adicionar valores reais das transações (apenas despesas para o gráfico de gastos)
       transactions?.forEach((transaction: any) => {
         if (transaction.type === 'expense') {
+          const amount = ensureNumber(transaction.amount)
           const date = transaction.transaction_date
-          const current = timeSeriesMap.get(date) || 0
-          timeSeriesMap.set(date, current + (transaction.amount || 0))
+          if (date) {
+            const current = timeSeriesMap.get(date) || 0
+            timeSeriesMap.set(date, current + amount)
+          }
         }
       })
 
@@ -185,9 +214,10 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const categoryMap = new Map<string, number>()
       transactions?.forEach((transaction: any) => {
         if (transaction.type === 'expense') {
+          const amount = ensureNumber(transaction.amount)
           const categoryName = transaction.category?.name || 'Sem Categoria'
           const current = categoryMap.get(categoryName) || 0
-          categoryMap.set(categoryName, current + (transaction.amount || 0))
+          categoryMap.set(categoryName, current + amount)
         }
       })
 
@@ -201,13 +231,23 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       // Pegar top 5 transações (ordenado por valor absoluto)
       const topTransactions = transactions
-        ?.filter((t: any) => t.amount && Math.abs(t.amount) > 0) // Apenas transações com valor válido
-        .sort((a: any, b: any) => Math.abs(b.amount) - Math.abs(a.amount))
+        ?.filter((t: any) => {
+          const amount = ensureNumber(t.amount)
+          return amount && Math.abs(amount) > 0
+        })
+        .sort((a: any, b: any) => {
+          const amountA = ensureNumber(a.amount)
+          const amountB = ensureNumber(b.amount)
+          return Math.abs(amountB) - Math.abs(amountA)
+        })
         .slice(0, 5)
-        .map((transaction: any) => ({
-          ...transaction,
-          amount: Number(transaction.amount.toFixed(2))
-        })) || []
+        .map((transaction: any) => {
+          const amount = ensureNumber(transaction.amount)
+          return {
+            ...transaction,
+            amount: Number(amount.toFixed(2))
+          }
+        }) || []
 
       console.log('✅ Dashboard: Dados carregados com sucesso')
       console.log(`📈 KPIs: ${transactions?.length || 0} transações processadas`)

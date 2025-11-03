@@ -157,6 +157,7 @@ export async function POST(request: NextRequest) {
               metodo_pagamento: paymentMethodFromForm, // Usa método selecionado pelo usuário
               categoria: categoryResult.categoryName || recognizeCategoryLegacy(trans.description),
               categoria_id: categoryResult.categoryId || null, // ID direto se encontrado
+              _categoriaNome: categoryResult.categoryName || recognizeCategoryLegacy(trans.description), // Nome para busca posterior
               cartao: finalCardId || '', // ID do cartão selecionado
               natureza_despesa: trans.installments ? 'installment' : 'variable',
               total_parcelas: trans.installments?.total || '',
@@ -257,32 +258,56 @@ export async function POST(request: NextRequest) {
         if ((transaction as any).categoria_id) {
           categoryId = (transaction as any).categoria_id
         }
-        // Prioridade 2: Busca por nome da categoria
-        else if (transaction.categoria) {
-          const catName = String(transaction.categoria).toLowerCase()
-          categoryId = categoryMap.get(catName) || null
-
-          // Se não encontrar, tenta reconhecimento inteligente novamente (pode ter melhorado)
-          if (!categoryId) {
-            // Converte userCategories para o formato esperado pela função
-            const formattedCategories: Category[] = (userCategories || []).map(cat => ({
-              id: cat.id,
-              name: cat.name,
-              type: (cat.type === 'income' || cat.type === 'expense') ? (cat.type as 'income' | 'expense') : null
-            }))
+        // Prioridade 2: Busca por nome da categoria (incluindo nome do reconhecimento)
+        else {
+          // Tenta usar o nome do reconhecimento inteligente primeiro
+          const categoriaNomeBusca = (transaction as any)._categoriaNome || transaction.categoria
+          if (categoriaNomeBusca) {
+            const catName = String(categoriaNomeBusca).toLowerCase().trim()
             
-            const categoryResult = await recognizeCategory(
-              String(transaction.descricao),
-              formattedCategories,
-              formattedHistory
-            )
+            // Busca exata no map
+            categoryId = categoryMap.get(catName) || null
             
-            if (categoryResult.categoryId) {
-              categoryId = categoryResult.categoryId
-            } else {
-              // Se ainda não encontrar, cria uma nova categoria apenas se o nome for válido
-              const catNameToCreate = String(transaction.categoria).trim()
-              if (catNameToCreate && catNameToCreate !== 'Categoria não encontrada' && catNameToCreate !== 'Outros') {
+            // Se não encontrou exato, busca por similaridade (case-insensitive, acentos, etc.)
+            if (!categoryId && userCategories) {
+              const normalizedSearch = catName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+              for (const cat of userCategories) {
+                const normalizedCat = cat.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+                if (normalizedCat === normalizedSearch || normalizedCat.includes(normalizedSearch) || normalizedSearch.includes(normalizedCat)) {
+                  categoryId = cat.id
+                  categoryMap.set(catName, categoryId) // Cache para próximas buscas
+                  break
+                }
+              }
+            }
+            
+            // Se ainda não encontrou, tenta reconhecimento inteligente novamente
+            if (!categoryId) {
+              const formattedCategories: Category[] = (userCategories || []).map(cat => ({
+                id: cat.id,
+                name: cat.name,
+                type: (cat.type === 'income' || cat.type === 'expense') ? (cat.type as 'income' | 'expense') : null
+              }))
+              
+              const categoryResult = await recognizeCategory(
+                String(transaction.descricao),
+                formattedCategories,
+                formattedHistory
+              )
+              
+              if (categoryResult.categoryId) {
+                categoryId = categoryResult.categoryId
+                categoryMap.set(catName, categoryId) // Cache
+              }
+            }
+            
+            // Se ainda não encontrou e o nome é válido, cria nova categoria
+            if (!categoryId) {
+              const catNameToCreate = String(categoriaNomeBusca).trim()
+              if (catNameToCreate && 
+                  catNameToCreate !== 'Categoria não encontrada' && 
+                  catNameToCreate !== 'Outros' &&
+                  catNameToCreate.length > 0) {
                 const { data: newCat } = await supabase
                   .from('categories')
                   .insert([
@@ -357,19 +382,19 @@ export async function POST(request: NextRequest) {
           ? parseInt(String(transaction.parcela_atual).trim()) 
           : null
 
-        // NOVA LÓGICA: Se total_parcelas > 1 e parcela_atual = 1 (ou não especificado),
-        // cria automaticamente todas as parcelas
-        // EXCEÇÃO: Se vem de PDF (_fromPDF), NUNCA gerar automaticamente (valor já é da parcela)
+        // NOVA LÓGICA: Se total_parcelas > 1, cria automaticamente as parcelas futuras
+        // IMPORTANTE: Mesmo para PDFs, se identificar parcelamento (ex: PARC01/05 ou PARC03/05), 
+        // deve gerar as parcelas FUTURAS a partir da parcela atual
+        // Exemplo: Se parcela atual é 3/05, cria a parcela 3 + as futuras (4/05, 5/05)
         const isFromPDF = (transaction as any)._fromPDF === true
+        const currentInstallment = installmentNumber || 1 // Se não especificado, assume parcela 1
         const shouldAutoGenerateInstallments = 
-          !isFromPDF && // IMPORTANTE: PDFs nunca geram parcelas automaticamente
           totalInstallments && 
           totalInstallments > 1 && 
-          (!installmentNumber || installmentNumber === 1)
+          currentInstallment <= totalInstallments // Se tem parcelamento válido
 
-        // Se parcela_atual está especificado e não é 1, cria apenas aquela parcela específica
-        if (totalInstallments && totalInstallments > 1 && installmentNumber && installmentNumber !== 1 && !shouldAutoGenerateInstallments) {
-          // Valida se parcela_atual é válida
+        // Valida se parcela_atual é válida (se especificada)
+        if (totalInstallments && totalInstallments > 1 && installmentNumber) {
           if (installmentNumber < 1 || installmentNumber > totalInstallments) {
             errorCount++
             errors.push(`Parcela atual (${installmentNumber}) inválida para total de ${totalInstallments} parcelas: ${transaction.descricao}`)
@@ -442,21 +467,57 @@ export async function POST(request: NextRequest) {
           cardId = finalCardId
         }
 
-        // Se deve gerar automaticamente todas as parcelas
+        // Se deve gerar automaticamente as parcelas futuras
         if (shouldAutoGenerateInstallments) {
           // Calcula o valor de cada parcela
-          // IMPORTANTE: Só divide se NÃO vier de PDF (PDFs já têm valor da parcela)
+          // IMPORTANTE: Para PDFs, o valor já é da parcela individual, então usa esse valor
+          // Para outros formatos, divide o valor total pelo número de parcelas
           const installmentAmount = isFromPDF ? amount : (amount / totalInstallments!)
           const baseDate = new Date(formatDate(String(transaction.data)))
           let installmentsCreated = 0
           const installmentErrors: string[] = []
 
-          // Cria todas as parcelas automaticamente
-          for (let i = 0; i < totalInstallments!; i++) {
-            const installmentDate = new Date(baseDate)
-            installmentDate.setMonth(installmentDate.getMonth() + i)
+          // LÓGICA: 
+          // - Se é PDF: a parcela atual já está sendo criada abaixo (no else), então só cria as FUTURAS
+          //   Exemplo: Se parcela atual é 3/05, cria apenas 4/05 e 5/05 (começa do currentInstallment + 1)
+          // - Se não é PDF e parcela atual é 1: cria todas as parcelas (1, 2, 3, ...)
+          // - Se não é PDF e parcela atual > 1: cria a parcela atual + futuras
+          const startIndex = isFromPDF 
+            ? currentInstallment // Para PDFs, começa da parcela seguinte (a atual já será criada abaixo)
+            : (currentInstallment === 1 ? 0 : currentInstallment - 1) // Para outros formatos, inclui a atual se não for 1
+          const endIndex = totalInstallments!
+          
+          // Para PDFs, só cria parcelas FUTURAS (não inclui a atual)
+          // Para outros formatos, cria a partir da atual
+          const actualStartIndex = isFromPDF ? currentInstallment : startIndex
 
-            const installmentDescription = `${String(transaction.descricao)} (${i + 1}/${totalInstallments})`
+          // Cria as parcelas automaticamente
+          // Para PDFs: começa da parcela seguinte (currentInstallment), então cria apenas as FUTURAS
+          //   Exemplo: Se parcela atual é 3/05, currentInstallment = 3, então:
+          //   - Loop começa de i = 3 (mas pula para 4, 5)
+          //   - Parcela 4 = baseDate + (4 - 3) meses = baseDate + 1 mês
+          //   - Parcela 5 = baseDate + (5 - 3) meses = baseDate + 2 meses
+          // Para outros formatos: cria a partir da parcela atual
+          for (let i = actualStartIndex; i < endIndex; i++) {
+            const installmentDate = new Date(baseDate)
+            const currentInstallmentNumber = i + 1
+            
+            // Para PDFs: calcula a diferença de meses a partir da parcela atual
+            // Para outros formatos: calcula a partir do índice (0 = mês atual, 1 = próximo mês, etc.)
+            if (isFromPDF) {
+              // Se parcela atual é 3, e estamos criando parcela 4:
+              // - Diferença = 4 - 3 = 1 mês
+              // - Diferença = 5 - 3 = 2 meses
+              const monthsDiff = currentInstallmentNumber - currentInstallment
+              installmentDate.setMonth(installmentDate.getMonth() + monthsDiff)
+            } else {
+              // Para outros formatos: se parcela atual é 1, i começa de 0 (mês atual)
+              // Se parcela atual é 3, i começa de 2 (mês atual + 2 = parcela 3)
+              const monthsDiff = i - (currentInstallment === 1 ? 0 : currentInstallment - 1)
+              installmentDate.setMonth(installmentDate.getMonth() + monthsDiff)
+            }
+
+            const installmentDescription = `${String(transaction.descricao)} (${currentInstallmentNumber}/${totalInstallments})`
 
             // IMPORTANTE: card_id deve ser null para métodos que não são crédito/débito
             const finalCardIdForInstallment = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
@@ -472,14 +533,14 @@ export async function POST(request: NextRequest) {
                 payment_method: validatedMethod,
                 card_id: finalCardIdForInstallment, // Null para métodos que não são cartão
                 expense_nature: 'installment',
-                installment_number: i + 1,
+                installment_number: currentInstallmentNumber,
                 total_installments: totalInstallments,
                 notes: transaction.observacoes || null,
               },
             ])
 
             if (insertError) {
-              installmentErrors.push(`Parcela ${i + 1}/${totalInstallments}: ${insertError.message}`)
+              installmentErrors.push(`Parcela ${currentInstallmentNumber}/${totalInstallments}: ${insertError.message}`)
             } else {
               installmentsCreated++
             }
@@ -492,7 +553,16 @@ export async function POST(request: NextRequest) {
             errorCount += installmentErrors.length
             errors.push(`${transaction.descricao}: ${installmentErrors.join('; ')}`)
           }
-        } else {
+          
+          // IMPORTANTE: Se é PDF, a parcela atual será criada no bloco abaixo
+          // (as parcelas futuras já foram criadas no loop acima)
+        }
+        
+        // Cria a transação atual
+        // IMPORTANTE: Para PDFs com parcelamento, SEMPRE cria a parcela atual aqui (independente do número)
+        // As parcelas futuras já foram criadas no loop acima (se shouldAutoGenerateInstallments)
+        // Para outros formatos: se não deve gerar automaticamente, cria apenas a transação atual
+        if (!shouldAutoGenerateInstallments || isFromPDF) {
           // Cria apenas uma transação (única ou parcela específica)
           let finalDescription = String(transaction.descricao)
           if (totalInstallments && totalInstallments > 1 && installmentNumber) {
