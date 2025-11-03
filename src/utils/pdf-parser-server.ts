@@ -20,7 +20,7 @@ export async function extractTextFromPDFServer(buffer: Buffer): Promise<string> 
     // 2. Verifica se é realmente um Buffer
     if (!Buffer.isBuffer(buffer)) {
       const bufferType = typeof buffer
-      const bufferConstructor = buffer?.constructor?.name
+      const bufferConstructor = (buffer as any)?.constructor?.name || 'unknown'
       throw new Error(
         `Buffer não é uma instância válida de Buffer. ` +
         `Tipo recebido: ${bufferType}, Constructor: ${bufferConstructor}. ` +

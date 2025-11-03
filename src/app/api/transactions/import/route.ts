@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import * as XLSX from 'xlsx'
 import { extractTextFromPDF, parseCreditCardBill, ExtractedTransaction } from '@/utils/pdf-parser'
-import { recognizeCategory, recognizeCategoryLegacy } from '@/utils/category-recognition'
+import { recognizeCategory, recognizeCategoryLegacy, type Category } from '@/utils/category-recognition'
 
 export async function POST(request: NextRequest) {
   try {
@@ -131,11 +131,18 @@ export async function POST(request: NextRequest) {
           // Converte transações extraídas para o formato esperado
           // IMPORTANTE: Quando vem de PDF, o valor já é da parcela individual, não deve ser dividido
           // Reconhece categorias de forma inteligente usando histórico e categorias reais
+          // Converte userCategories para o formato esperado pela função
+          const formattedCategories: Category[] = (userCategories || []).map(cat => ({
+            id: cat.id,
+            name: cat.name,
+            type: (cat.type === 'income' || cat.type === 'expense') ? (cat.type as 'income' | 'expense') : null
+          }))
+          
           const categoryResults = await Promise.all(
             extractedTransactions.map(trans => 
               recognizeCategory(
                 trans.description,
-                userCategories || [],
+                formattedCategories,
                 formattedHistory
               )
             )
@@ -257,9 +264,16 @@ export async function POST(request: NextRequest) {
 
           // Se não encontrar, tenta reconhecimento inteligente novamente (pode ter melhorado)
           if (!categoryId) {
+            // Converte userCategories para o formato esperado pela função
+            const formattedCategories: Category[] = (userCategories || []).map(cat => ({
+              id: cat.id,
+              name: cat.name,
+              type: (cat.type === 'income' || cat.type === 'expense') ? (cat.type as 'income' | 'expense') : null
+            }))
+            
             const categoryResult = await recognizeCategory(
               String(transaction.descricao),
-              userCategories || [],
+              formattedCategories,
               formattedHistory
             )
             

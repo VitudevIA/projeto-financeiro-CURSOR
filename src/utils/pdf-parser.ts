@@ -96,49 +96,13 @@ export async function extractTextFromPDF(file: File): Promise<string> {
       // Usa função auxiliar que usa require diretamente
       return await extractTextFromPDFServer(buffer)
     } else {
-      // No cliente (browser), usa pdfjs-dist
-      // Nota: Em produção, o processamento de PDF deve sempre acontecer no servidor
-      try {
-        const pdfjsLib = await import('pdfjs-dist')
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
-        
-        const arrayBuffer = await file.arrayBuffer()
-        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
-        const pdf = await loadingTask.promise
-
-        let fullText = ''
-
-        // Itera por todas as páginas
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-          const page = await pdf.getPage(pageNum)
-          const textContent = await page.getTextContent()
-          
-          // Extrai texto de cada item
-          const pageText = textContent.items
-            .map((item: any) => {
-              if ('str' in item) {
-                return item.str
-              }
-              return ''
-            })
-            .join(' ')
-          
-          fullText += pageText + '\n'
-        }
-
-        if (!fullText || fullText.trim().length === 0) {
-          throw new Error('Nenhum texto encontrado no PDF')
-        }
-
-        return fullText
-      } catch (clientError) {
-        // Se falhar no cliente, sugere usar o servidor
-        throw new Error(
-          `Erro ao processar PDF no navegador. ` +
-          `Por favor, tente novamente ou entre em contato com o suporte. ` +
-          `Erro: ${clientError instanceof Error ? clientError.message : 'Erro desconhecido'}`
-        )
-      }
+      // No cliente (browser), o processamento de PDF deve ser feito no servidor
+      // Esta função não deve ser chamada no cliente em produção
+      throw new Error(
+        'Processamento de PDF no cliente não é suportado. ' +
+        'O processamento deve ser feito no servidor através da API route. ' +
+        'Certifique-se de que o arquivo está sendo enviado para /api/transactions/import'
+      )
     }
   } catch (error) {
     // Evita encadear mensagens de erro

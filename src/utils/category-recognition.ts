@@ -4,7 +4,7 @@
  * Usa histórico de transações para melhorar precisão
  */
 
-interface Category {
+export interface Category {
   id: string
   name: string
   type: 'income' | 'expense' | null
