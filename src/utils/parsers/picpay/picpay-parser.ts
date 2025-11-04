@@ -173,9 +173,10 @@ export class PicPayParser extends BaseBankStatementParser {
       // O parcelamento pode estar grudado na descrição (ex: "SHEINPARC01/02")
       const descricaoOriginal = descricao
       
-      // CRÍTICO: Verifica se há parcelamento parcial (PARCXX/0) e tenta encontrar o dígito completo
-      // Isso acontece quando o PDF corta o segundo dígito do total de parcelas
-      let parcelamento = this.extractInstallments(descricaoOriginal)
+      // CRÍTICO: Extrai parcelamento da descrição, mas EVITA capturar números do valor
+      // IMPORTANTE: O parcelamento deve estar na descrição, NÃO no valor
+      // Para isso, extraímos parcelamento ANTES de processar o valor
+      let parcelamento = this.extractInstallmentsPicPay(descricaoOriginal, linha)
       
       // Se encontrou parcelamento parcial (termina com /0), tenta encontrar o dígito completo
       // Verificando a linha atual e próximas linhas
@@ -400,14 +401,12 @@ export class PicPayParser extends BaseBankStatementParser {
 
       // CORREÇÃO CRÍTICA: Se há parcelamento e o valor parece estar concatenado,
       // tenta extrair o valor real da parcela
-      // IMPORTANTE: Esta correção só deve ser aplicada quando há EVIDÊNCIA CLARA de concatenação
+      // IMPORTANTE: Esta correção deve ser aplicada quando:
+      // 1. O parcelamento foi encontrado na descrição (não inferido do valor)
+      // 2. O valor é suspeitamente alto (> 200) e contém dígitos que correspondem ao total de parcelas
+      // Exemplo: R$ 576.00 para PARC02/05 pode ser 5 (total) + 76.00 (valor real)
+      // Exemplo: R$ 559.45 para PARC03/05 pode ser 5 (total) + 59.45 (valor real)
       // Exemplo: R$ 511.89 para PARC01/05 pode ser 5 (total) + 11.89 (valor real)
-      // Mas NÃO deve ser aplicada para valores normais como R$ 67,90
-      
-      // A correção só é aplicada se:
-      // 1. O valor é suspeitamente alto (> 200) para uma parcela comum
-      // 2. OU o primeiro(s) dígito(s) corresponde(m) EXATAMENTE ao total de parcelas
-      // 3. E o valor resultante após remoção é razoável
       
       if (parcelamento && parcelamento.total > 0 && parcelamento.total <= 99) {
         const valorOriginal = valor
@@ -423,15 +422,16 @@ export class PicPayParser extends BaseBankStatementParser {
           const doisPrimeirosDigitos = parseInt(valorNumStr.substring(0, 2))
           
           // CRITÉRIO 2: Verifica se o primeiro dígito corresponde EXATAMENTE ao total de parcelas
-          // E o valor resultante seria razoável
+          // Exemplo: valor 576,00 com parcelamento 02/05 -> primeiro dígito "5" = total "5"
           if (primeiroDigito === parcelamento.total && valorNumStr.length >= 3) {
             const valorRestante = valorNumStr.substring(1)
             const novoValorStr = `${valorRestante},${valorDecimal}`
             const novoValor = this.parseMonetaryValue(novoValorStr)
             
             // CRITÉRIO 3: Valida que o novo valor é razoável e significativamente menor
+            // Exemplo: 576,00 -> 76,00 (diferença de 500,00 > 50)
             if (novoValor > 0 && novoValor < valor && novoValor < 500 && (valor - novoValor) > 50) {
-              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (concatenação confirmada): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removido dígito ${primeiroDigito} = total ${parcelamento.total})`)
+              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (parcelamento ${parcelamento.current}/${parcelamento.total} encontrado na descrição): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removido dígito ${primeiroDigito} = total ${parcelamento.total})`)
               valor = novoValor
               valorStr = novoValorStr
             }
@@ -444,9 +444,28 @@ export class PicPayParser extends BaseBankStatementParser {
             
             // CRITÉRIO 3: Valida que o novo valor é razoável e significativamente menor
             if (novoValor > 0 && novoValor < valor && novoValor < 500 && (valor - novoValor) > 50) {
-              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (concatenação confirmada): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removidos dígitos ${doisPrimeirosDigitos} = total ${parcelamento.total})`)
+              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (parcelamento ${parcelamento.current}/${parcelamento.total} encontrado na descrição): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removidos dígitos ${doisPrimeirosDigitos} = total ${parcelamento.total})`)
               valor = novoValor
               valorStr = novoValorStr
+            }
+          } 
+          // CRITÉRIO 2C: Tenta também verificar se o valor inteiro contém o total de parcelas
+          // Exemplo: valor 511,89 com parcelamento 01/05 -> pode ser "5" + "11,89"
+          // Mas isso é mais arriscado, então só aplica se houver correspondência exata
+          else if (valorNumStr.length >= 3 && valorNumStr.includes(parcelamento.total.toString())) {
+            // Verifica se o total aparece no início
+            const indexTotal = valorNumStr.indexOf(parcelamento.total.toString())
+            if (indexTotal === 0) {
+              // Remove os dígitos do total
+              const valorRestante = valorNumStr.substring(parcelamento.total.toString().length)
+              const novoValorStr = `${valorRestante},${valorDecimal}`
+              const novoValor = this.parseMonetaryValue(novoValorStr)
+              
+              if (novoValor > 0 && novoValor < valor && novoValor < 500 && (valor - novoValor) > 50) {
+                console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (parcelamento ${parcelamento.current}/${parcelamento.total} encontrado na descrição): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removido total ${parcelamento.total} do início)`)
+                valor = novoValor
+                valorStr = novoValorStr
+              }
             }
           } else {
             // Se não há correspondência exata, NÃO aplica correção automática
@@ -512,6 +531,64 @@ export class PicPayParser extends BaseBankStatementParser {
     const uniqueTransactions = this.removeDuplicates(transactions)
     console.log(`[${this.bankName} Parser] ✅ ${uniqueTransactions.length} transações extraídas`)
     return uniqueTransactions
+  }
+
+  /**
+   * Extrai parcelamento específico para PicPay, evitando capturar números do valor
+   * CRÍTICO: Esta função deve capturar apenas parcelamento da descrição, não do valor
+   */
+  private extractInstallmentsPicPay(description: string, linhaCompleta: string): { current: number; total: number } | null {
+    // Primeiro tenta usar o método base (padrões específicos do PicPay)
+    let parcelamento = this.extractInstallments(description)
+    
+    // Se encontrou parcelamento, valida que não está capturando números do valor
+    if (parcelamento) {
+      // Extrai o valor da linha completa para validar
+      const valoresNaLinha = linhaCompleta.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g)
+      if (valoresNaLinha && valoresNaLinha.length > 0) {
+        const ultimoValor = valoresNaLinha[valoresNaLinha.length - 1]
+        const valorNumero = this.parseMonetaryValue(ultimoValor)
+        const valorInteiro = Math.floor(valorNumero).toString()
+        
+        // CRÍTICO: Se o total de parcelas corresponde a dígitos do valor, pode ser falso positivo
+        // Exemplo: valor 576,00 não deve ter parcelamento "57/57"
+        // Validação: se o total de parcelas está no valor como número inteiro, é suspeito
+        if (valorInteiro.includes(parcelamento.total.toString()) || 
+            valorInteiro.includes(parcelamento.current.toString())) {
+          // Verifica se é realmente parcelamento ou parte do valor
+          const totalComoString = parcelamento.total.toString()
+          const currentComoString = parcelamento.current.toString()
+          
+          // Se o total aparece no início do valor (ex: "57" em "576,00"), é falso positivo
+          if (valorInteiro.startsWith(totalComoString) || 
+              valorInteiro.startsWith(currentComoString)) {
+            console.log(`[${this.bankName} Parser] ⚠️ Parcelamento ${parcelamento.current}/${parcelamento.total} pode ser falso positivo (valor: ${valorNumero.toFixed(2)})`)
+            
+            // Tenta encontrar parcelamento real na descrição antes do valor
+            // Procura por padrões PARCXX/YY na descrição original
+            const descricaoSemValor = description.split(/\d{1,3}(?:\.\d{3})*,\d{2}/)[0] // Descrição antes do valor
+            const parcelaReal = descricaoSemValor.match(/PARC(\d{1,2})\/(\d{1,2})/i)
+            
+            if (parcelaReal) {
+              const current = parseInt(parcelaReal[1])
+              const total = parseInt(parcelaReal[2])
+              if (current > 0 && total > 0 && current <= total && total <= 99) {
+                console.log(`[${this.bankName} Parser] ✅ Parcelamento real encontrado na descrição: ${current}/${total}`)
+                return { current, total }
+              }
+            }
+            
+            // Se não encontrou parcelamento real, retorna null (não é parcelamento)
+            console.log(`[${this.bankName} Parser] ❌ Parcelamento ${parcelamento.current}/${parcelamento.total} descartado (falso positivo do valor)`)
+            return null
+          }
+        }
+      }
+      
+      return parcelamento
+    }
+    
+    return null
   }
 
   private deveIgnorarLinha(linha: string): boolean {

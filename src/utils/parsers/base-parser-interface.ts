@@ -141,12 +141,14 @@ export abstract class BaseBankStatementParser implements IBankStatementParser {
       }
     }
 
-    // Fallback: padrões mais genéricos
+    // Fallback: padrões mais genéricos (mais restritivos para evitar falsos positivos)
     const normalized = this.normalizeText(description).toLowerCase()
     const genericPatterns = [
       /parcela\s+(\d+)\s*\/\s*(\d+)/i,
       /parc(\d+)\/(\d+)/i,
-      /(\d+)\s*\/\s*(\d+)/,
+      // IMPORTANTE: Padrão genérico (X/Y) só se não houver valores monetários próximos
+      // Isso evita capturar números do valor (ex: "576,00" não deve virar "57/6")
+      /(\d{1,2})\s*\/\s*(\d{1,2})(?![,\d]{1,3})/i, // Negative lookahead para evitar valores monetários
       /parcela\s+(\d+)\s+de\s+(\d+)/i,
     ]
 
@@ -155,8 +157,16 @@ export abstract class BaseBankStatementParser implements IBankStatementParser {
       if (match) {
         const current = parseInt(match[1])
         const total = parseInt(match[2])
-        if (current > 0 && total > 0 && current <= total) {
-          return { current, total }
+        // Validação mais restritiva: parcelas devem ser razoáveis (1-99)
+        // E não devem ser números muito grandes que podem ser do valor
+        if (current > 0 && total > 0 && current <= total && total <= 99 && current <= 99) {
+          // Validação adicional: se o match está próximo a valores monetários, ignora
+          const matchIndex = normalized.indexOf(match[0])
+          const depoisMatch = normalized.substring(matchIndex + match[0].length, matchIndex + match[0].length + 10)
+          // Se há um valor monetário logo após (ex: "57/6,00"), não é parcelamento
+          if (!/\d{1,3}[,\d]{0,3}/.test(depoisMatch)) {
+            return { current, total }
+          }
         }
       }
     }
