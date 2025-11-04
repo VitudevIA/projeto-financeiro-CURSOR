@@ -836,14 +836,39 @@ async function parsePDFFile(file: File): Promise<ExtractedTransaction[]> {
 
     // Parse das transações
     console.log('[API Import] Iniciando parse das transações...')
-    const transactions = parseCreditCardBill(text)
+    console.log(`[API Import] Tamanho do texto a processar: ${text.length} caracteres`)
+    console.log(`[API Import] Primeiros 500 caracteres:`, text.substring(0, 500))
     
-    console.log(`[API Import] Parse concluído: ${transactions?.length || 0} transações encontradas`)
+    let transactions: ExtractedTransaction[] = []
     
-    if (!transactions || transactions.length === 0) {
+    try {
+      transactions = parseCreditCardBill(text)
+      console.log(`[API Import] Parse concluído: ${transactions?.length || 0} transações encontradas`)
+    } catch (parseError) {
+      console.error('[API Import] ❌ ERRO CRÍTICO durante parse:', parseError)
+      console.error('[API Import] Mensagem:', parseError instanceof Error ? parseError.message : String(parseError))
+      console.error('[API Import] Stack trace:', parseError instanceof Error ? parseError.stack : 'N/A')
+      throw new Error(`Erro ao processar PDF: ${parseError instanceof Error ? parseError.message : 'Erro desconhecido'}`)
+    }
+    
+    if (!transactions) {
+      console.error('[API Import] ❌ parseCreditCardBill retornou null/undefined!')
+      console.error('[API Import] Primeiros 2000 caracteres do texto para análise:')
+      console.error(text.substring(0, 2000))
+      throw new Error('Nenhuma transação encontrada no PDF. Erro ao processar o arquivo.')
+    }
+    
+    if (!Array.isArray(transactions)) {
+      console.error('[API Import] ❌ parseCreditCardBill retornou resultado inválido (não é array):', typeof transactions, transactions)
+      throw new Error('Erro ao processar PDF: resultado inválido do parser.')
+    }
+    
+    if (transactions.length === 0) {
       console.error('[API Import] ❌ NENHUMA TRANSAÇÃO ENCONTRADA!')
       console.error('[API Import] Primeiros 2000 caracteres do texto para análise:')
       console.error(text.substring(0, 2000))
+      console.error('[API Import] Últimos 500 caracteres do texto:')
+      console.error(text.substring(Math.max(0, text.length - 500)))
       throw new Error('Nenhuma transação encontrada no PDF. Verifique se o arquivo é uma fatura de cartão de crédito válida.')
     }
 

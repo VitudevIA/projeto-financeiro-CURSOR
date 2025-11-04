@@ -4,7 +4,7 @@
  */
 
 import { extractTextFromPDFServer } from './pdf-parser-server'
-import { parsePicPayBill } from './picpay-pdf-parser'
+import { BankStatementParserFactory } from './parsers/parser-factory'
 
 /**
  * Extrai texto de um arquivo PDF
@@ -132,30 +132,27 @@ export interface ExtractedTransaction {
 
 /**
  * Extrai transações de uma fatura de cartão de crédito
- * Procura por padrões comuns em faturas brasileiras
- * Usa parser otimizado para PicPay quando detectado, com fallback para parser genérico
+ * Usa Factory Pattern para detectar automaticamente o banco e usar o parser apropriado
  */
 export function parseCreditCardBill(text: string): ExtractedTransaction[] {
   console.log('[PDF Parser] Iniciando parseCreditCardBill')
   console.log(`[PDF Parser] Tamanho do texto recebido: ${text.length} caracteres`)
   
-  // Tenta primeiro com parser PicPay otimizado
+  // Usa Factory para detectar e usar o parser apropriado
   try {
-    console.log('[PDF Parser] Tentando parser PicPay...')
-    const picPayTransactions = parsePicPayBill(text)
+    const transactions = BankStatementParserFactory.parse(text)
     
-    console.log(`[PDF Parser] Parser PicPay retornou: ${picPayTransactions?.length || 0} transações`)
-    
-    if (picPayTransactions && picPayTransactions.length > 0) {
-      console.log(`[PDF Parser] ✅ Usando parser PicPay: ${picPayTransactions.length} transações encontradas`)
-      return picPayTransactions
-    } else {
-      console.log('[PDF Parser] ⚠️ Parser PicPay não encontrou transações, tentando parser genérico...')
+    if (transactions && Array.isArray(transactions) && transactions.length > 0) {
+      console.log(`[PDF Parser] ✅ ${transactions.length} transações encontradas pelo parser específico`)
+      return transactions
     }
+    
+    // Se não encontrou transações, tenta parser genérico
+    console.log('[PDF Parser] ⚠️ Parser específico não encontrou transações, tentando parser genérico...')
   } catch (error) {
-    // Se falhar, continua com parser genérico
-    console.error('[PDF Parser] ❌ Erro no parser PicPay, usando parser genérico:', error)
-    console.error('[PDF Parser] Stack:', error instanceof Error ? error.stack : 'N/A')
+    console.error('[PDF Parser] ❌ Erro no parser específico, tentando genérico:', error)
+    console.error('[PDF Parser] Stack trace:', error instanceof Error ? error.stack : 'N/A')
+    // Continua para tentar parser genérico
   }
   
   console.log('[PDF Parser] Usando parser genérico como fallback...')
