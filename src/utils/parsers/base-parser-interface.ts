@@ -69,7 +69,10 @@ export abstract class BaseBankStatementParser implements IBankStatementParser {
 
     let day = match[1].padStart(2, '0')
     let month = match[2].padStart(2, '0')
-    let finalYear = year || match[3] || new Date().getFullYear().toString()
+    // Garante que finalYear seja sempre string
+    let finalYear = year 
+      ? year.toString() 
+      : (match[3] || new Date().getFullYear().toString())
 
     // Ajusta ano se a data estiver no futuro
     const parsedDate = new Date(parseInt(finalYear), parseInt(month) - 1, parseInt(day))
