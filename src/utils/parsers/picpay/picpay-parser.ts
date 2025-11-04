@@ -219,19 +219,25 @@ export class PicPayParser extends BaseBankStatementParser {
           
           // Se ainda não encontrou, tenta inferir do valor concatenado
           // VALIDAÇÃO CRÍTICA: O valor pode estar concatenado com o total de parcelas
+          // IMPORTANTE: Esta inferência só deve ser feita quando há EVIDÊNCIA CLARA (valor suspeitamente alto)
           // Padrão identificado nos logs do usuário:
           // - R$ 511.89 = 5 (total) + 11.89 (valor) para PARC01/05
           // - R$ 267.90 = 2 (total) + 67.90 (valor) para PARC01/02
           // - R$ 576.00 = 5 (total) + 76.00 (valor) para PARC02/05
           // - R$ 559.45 = 5 (total) + 59.45 (valor) para PARC03/05
           // - R$ 379.22 = 3 (total) + 79.22 (valor) para PARC03/03
+          
+          let totalFoiInferidoDoValor = false // Flag para rastrear se foi inferido
+          
           if (!totalParcelas) {
             const valorExtraido = this.parseMonetaryValue(valorStr)
             const valorStrLimpo = valorStr.trim().replace(/[^\d.,-]/g, '')
             const valorInteiro = Math.floor(valorExtraido).toString()
             const valorDecimal = valorStrLimpo.split(',')[1] || '00'
             
-            if (valorInteiro.length >= 3 && valorExtraido > 100 && valorExtraido < 1000) {
+            // CRITÉRIO RESTRITIVO: Só tenta inferir se o valor for suspeitamente alto (> 200)
+            // Isso evita inferir incorretamente de valores normais
+            if (valorInteiro.length >= 3 && valorExtraido > 200 && valorExtraido < 1000) {
               // Tenta primeiro dígito (1-9) como total de parcelas
               const primeiroDigito = parseInt(valorInteiro.substring(0, 1))
               if (primeiroDigito >= parcelaAtual && primeiroDigito <= 99) {
@@ -239,9 +245,10 @@ export class PicPayParser extends BaseBankStatementParser {
                 const valorRestanteStr = valorInteiro.substring(1) + ',' + valorDecimal
                 const valorRestante = this.parseMonetaryValue(valorRestanteStr)
                 
-                // Valida: o valor restante deve ser razoável (< 1000) e menor que o original
-                if (valorRestante > 0 && valorRestante < valorExtraido && valorRestante < 1000) {
+                // Valida: o valor restante deve ser razoável e significativamente menor
+                if (valorRestante > 0 && valorRestante < valorExtraido && valorRestante < 500 && (valorExtraido - valorRestante) > 50) {
                   totalParcelas = primeiroDigito
+                  totalFoiInferidoDoValor = true
                   console.log(`[${this.bankName} Parser] 🔍 Total inferido do valor (1 dígito): ${totalParcelas} (valor seria R$ ${valorRestante.toFixed(2)})`)
                 }
               }
@@ -253,8 +260,10 @@ export class PicPayParser extends BaseBankStatementParser {
                   const valorRestanteStr = valorInteiro.substring(2) + ',' + valorDecimal
                   const valorRestante = this.parseMonetaryValue(valorRestanteStr)
                   
-                  if (valorRestante > 0 && valorRestante < valorExtraido && valorRestante < 1000) {
+                  // Valida: o valor restante deve ser razoável e significativamente menor
+                  if (valorRestante > 0 && valorRestante < valorExtraido && valorRestante < 500 && (valorExtraido - valorRestante) > 50) {
                     totalParcelas = doisPrimeirosDigitos
+                    totalFoiInferidoDoValor = true
                     console.log(`[${this.bankName} Parser] 🔍 Total inferido do valor (2 dígitos): ${totalParcelas} (valor seria R$ ${valorRestante.toFixed(2)})`)
                   }
                 }
@@ -266,35 +275,45 @@ export class PicPayParser extends BaseBankStatementParser {
             parcelamento = { current: parcelaAtual, total: totalParcelas }
             console.log(`[${this.bankName} Parser] ✅ Parcelamento corrigido de PARC${parcelaAtual}/0 para ${parcelaAtual}/${totalParcelas}`)
             
-            // CORREÇÃO CRÍTICA: Se o total foi inferido do valor, corrige o valor também
-            // Remove o dígito(s) do total de parcelas do valor concatenado
-            const valorExtraido = this.parseMonetaryValue(valorStr)
-            const valorStrLimpo = valorStr.trim().replace(/[^\d.,-]/g, '')
-            const valorInteiro = Math.floor(valorExtraido).toString()
-            const valorDecimal = valorStrLimpo.split(',')[1] || '00'
+            // CORREÇÃO CRÍTICA: Se o total foi INFERIDO DO VALOR, corrige o valor também
+            // IMPORTANTE: Só corrige se o totalParcelas foi inferido do valor
+            // Se foi encontrado em linha separada, NÃO corrige o valor (já está correto)
             
-            if (valorInteiro.length >= 3) {
-              const primeiroDigito = parseInt(valorInteiro.substring(0, 1))
-              const doisPrimeirosDigitos = parseInt(valorInteiro.substring(0, 2))
+            if (totalFoiInferidoDoValor) {
+              const valorExtraido = this.parseMonetaryValue(valorStr)
+              const valorStrLimpo = valorStr.trim().replace(/[^\d.,-]/g, '')
+              const valorInteiro = Math.floor(valorExtraido).toString()
+              const valorDecimal = valorStrLimpo.split(',')[1] || '00'
               
-              // Se o primeiro dígito corresponde ao total, remove-o
-              if (primeiroDigito === totalParcelas) {
-                const valorRestanteStr = valorInteiro.substring(1) + ',' + valorDecimal
-                const valorRestante = this.parseMonetaryValue(valorRestanteStr)
-                if (valorRestante > 0 && valorRestante < valorExtraido && valorRestante < 1000) {
-                  valorStr = valorRestanteStr
-                  console.log(`[${this.bankName} Parser] 🔧 Valor corrigido junto com parcelamento: R$ ${valorExtraido.toFixed(2)} -> R$ ${valorRestante.toFixed(2)}`)
-                }
-              } 
-              // Se os dois primeiros dígitos correspondem ao total, remove-os
-              else if (doisPrimeirosDigitos === totalParcelas && doisPrimeirosDigitos >= 10) {
-                const valorRestanteStr = valorInteiro.substring(2) + ',' + valorDecimal
-                const valorRestante = this.parseMonetaryValue(valorRestanteStr)
-                if (valorRestante > 0 && valorRestante < valorExtraido && valorRestante < 1000) {
-                  valorStr = valorRestanteStr
-                  console.log(`[${this.bankName} Parser] 🔧 Valor corrigido junto com parcelamento: R$ ${valorExtraido.toFixed(2)} -> R$ ${valorRestante.toFixed(2)}`)
+              if (valorInteiro.length >= 3) {
+                const primeiroDigito = parseInt(valorInteiro.substring(0, 1))
+                const doisPrimeirosDigitos = parseInt(valorInteiro.substring(0, 2))
+                
+                // Se o primeiro dígito corresponde EXATAMENTE ao total
+                if (primeiroDigito === totalParcelas) {
+                  const valorRestanteStr = valorInteiro.substring(1) + ',' + valorDecimal
+                  const valorRestante = this.parseMonetaryValue(valorRestanteStr)
+                  
+                  // Valida: diferença significativa e valor resultante razoável
+                  if (valorRestante > 0 && valorRestante < valorExtraido && valorRestante < 500 && (valorExtraido - valorRestante) > 50) {
+                    valorStr = valorRestanteStr
+                    console.log(`[${this.bankName} Parser] 🔧 Valor corrigido junto com parcelamento (inferido do valor): R$ ${valorExtraido.toFixed(2)} -> R$ ${valorRestante.toFixed(2)}`)
+                  }
+                } 
+                // Se os dois primeiros dígitos correspondem ao total (10-99)
+                else if (doisPrimeirosDigitos === totalParcelas && doisPrimeirosDigitos >= 10 && valorInteiro.length >= 4) {
+                  const valorRestanteStr = valorInteiro.substring(2) + ',' + valorDecimal
+                  const valorRestante = this.parseMonetaryValue(valorRestanteStr)
+                  
+                  // Valida: diferença significativa e valor resultante razoável
+                  if (valorRestante > 0 && valorRestante < valorExtraido && valorRestante < 500 && (valorExtraido - valorRestante) > 50) {
+                    valorStr = valorRestanteStr
+                    console.log(`[${this.bankName} Parser] 🔧 Valor corrigido junto com parcelamento (inferido do valor): R$ ${valorExtraido.toFixed(2)} -> R$ ${valorRestante.toFixed(2)}`)
+                  }
                 }
               }
+            } else {
+              console.log(`[${this.bankName} Parser] ℹ️ Total de parcelas encontrado em linha separada ou valor não suspeito, valor não será corrigido automaticamente`)
             }
           }
         }
@@ -381,69 +400,65 @@ export class PicPayParser extends BaseBankStatementParser {
 
       // CORREÇÃO CRÍTICA: Se há parcelamento e o valor parece estar concatenado,
       // tenta extrair o valor real da parcela
+      // IMPORTANTE: Esta correção só deve ser aplicada quando há EVIDÊNCIA CLARA de concatenação
       // Exemplo: R$ 511.89 para PARC01/05 pode ser 5 (total) + 11.89 (valor real)
+      // Mas NÃO deve ser aplicada para valores normais como R$ 67,90
+      
+      // A correção só é aplicada se:
+      // 1. O valor é suspeitamente alto (> 200) para uma parcela comum
+      // 2. OU o primeiro(s) dígito(s) corresponde(m) EXATAMENTE ao total de parcelas
+      // 3. E o valor resultante após remoção é razoável
+      
       if (parcelamento && parcelamento.total > 0 && parcelamento.total <= 99) {
-        const valorStrOriginal = valorStr
+        const valorOriginal = valor
         const valorNumStr = Math.floor(valor).toString()
         const valorDecimal = valorStrLimpo.split(',')[1] || '00'
         
-        // Se o valor tem mais de 3 dígitos, pode estar concatenado
-        if (valorNumStr.length >= 3) {
+        // CRITÉRIO 1: Valor suspeitamente alto (pode indicar concatenação)
+        // Só aplica correção se o valor for > 200 e tiver pelo menos 3 dígitos
+        const valorSuspeito = valor > 200 && valorNumStr.length >= 3
+        
+        if (valorSuspeito) {
           const primeiroDigito = parseInt(valorNumStr.substring(0, 1))
           const doisPrimeirosDigitos = parseInt(valorNumStr.substring(0, 2))
           
-          // Verifica se o primeiro dígito corresponde ao total de parcelas
-          if (primeiroDigito === parcelamento.total) {
-            // Remove o primeiro dígito e reconstrói o valor
+          // CRITÉRIO 2: Verifica se o primeiro dígito corresponde EXATAMENTE ao total de parcelas
+          // E o valor resultante seria razoável
+          if (primeiroDigito === parcelamento.total && valorNumStr.length >= 3) {
             const valorRestante = valorNumStr.substring(1)
             const novoValorStr = `${valorRestante},${valorDecimal}`
             const novoValor = this.parseMonetaryValue(novoValorStr)
             
-            if (novoValor > 0 && novoValor < valor && novoValor < 1000) {
-              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (concatenação detectada): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removido dígito ${primeiroDigito} do total de parcelas ${parcelamento.total})`)
+            // CRITÉRIO 3: Valida que o novo valor é razoável e significativamente menor
+            if (novoValor > 0 && novoValor < valor && novoValor < 500 && (valor - novoValor) > 50) {
+              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (concatenação confirmada): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removido dígito ${primeiroDigito} = total ${parcelamento.total})`)
               valor = novoValor
               valorStr = novoValorStr
             }
           } 
-          // Verifica se os dois primeiros dígitos correspondem ao total de parcelas (10-99)
-          else if (doisPrimeirosDigitos === parcelamento.total && doisPrimeirosDigitos >= 10 && doisPrimeirosDigitos <= 99) {
-            // Remove os dois primeiros dígitos e reconstrói o valor
+          // CRITÉRIO 2B: Verifica se os dois primeiros dígitos correspondem ao total (10-99)
+          else if (doisPrimeirosDigitos === parcelamento.total && doisPrimeirosDigitos >= 10 && valorNumStr.length >= 4) {
             const valorRestante = valorNumStr.substring(2)
             const novoValorStr = `${valorRestante},${valorDecimal}`
             const novoValor = this.parseMonetaryValue(novoValorStr)
             
-            if (novoValor > 0 && novoValor < valor && novoValor < 1000) {
-              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (concatenação detectada): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removidos dígitos ${doisPrimeirosDigitos} do total de parcelas ${parcelamento.total})`)
+            // CRITÉRIO 3: Valida que o novo valor é razoável e significativamente menor
+            if (novoValor > 0 && novoValor < valor && novoValor < 500 && (valor - novoValor) > 50) {
+              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (concatenação confirmada): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removidos dígitos ${doisPrimeirosDigitos} = total ${parcelamento.total})`)
               valor = novoValor
               valorStr = novoValorStr
             }
-          }
-          // Se não encontrou correspondência direta, tenta inferir do valor
-          // Exemplo: R$ 379.22 pode ser 3 (total) + 79.22 (valor) para PARC03/03
-          else if (valor > 100 && valor < 1000) {
-            // Tenta primeiro dígito
-            if (primeiroDigito >= parcelamento.current && primeiroDigito <= 99) {
-              const valorRestante = valorNumStr.substring(1)
-              const novoValorStr = `${valorRestante},${valorDecimal}`
-              const novoValor = this.parseMonetaryValue(novoValorStr)
-              
-              // Valida: novo valor deve ser razoável (< 1000) e menor que o original
-              if (novoValor > 0 && novoValor < valor && novoValor < 1000 && primeiroDigito === parcelamento.total) {
-                console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (inferido): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (total de parcelas: ${primeiroDigito})`)
-                valor = novoValor
-                valorStr = novoValorStr
-                // Atualiza o parcelamento com o total inferido
-                parcelamento = { current: parcelamento.current, total: primeiroDigito }
-              }
-            }
+          } else {
+            // Se não há correspondência exata, NÃO aplica correção automática
+            // Isso evita remover dígitos de valores corretos
+            console.log(`[${this.bankName} Parser] ℹ️ Valor ${valor.toFixed(2)} não parece estar concatenado (total parcelas: ${parcelamento.total}, primeiro dígito: ${primeiroDigito})`)
           }
         }
         
-        // Validação adicional: se o valor ainda parece muito alto para uma parcela,
-        // pode estar pegando o valor total da compra
-        // Heurística: se o valor é > 500 e há parcelamento, pode estar errado
+        // Validação: se o valor final parece muito alto para uma parcela, apenas loga
+        // NÃO aplica correção automática sem evidência clara
         if (valor > 500 && parcelamento.total > 1) {
-          console.log(`[${this.bankName} Parser] ⚠️ Valor alto para parcela ${parcelamento.current}/${parcelamento.total}: R$ ${valor.toFixed(2)}`)
+          console.log(`[${this.bankName} Parser] ⚠️ Valor alto para parcela ${parcelamento.current}/${parcelamento.total}: R$ ${valor.toFixed(2)} (valor original: R$ ${valorOriginal.toFixed(2)})`)
         }
       }
 
