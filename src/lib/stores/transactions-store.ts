@@ -33,6 +33,7 @@ interface TransactionsStore {
   }) => Promise<void>
   updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>
   deleteTransaction: (id: string) => Promise<void>
+  deleteTransactions: (ids: string[]) => Promise<void>
 }
 
 export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
@@ -252,6 +253,27 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
 
       set((state) => ({
         transactions: state.transactions.filter((t) => t.id !== id)
+      }))
+    } catch (error) {
+      set({ error: (error as Error).message })
+      throw error
+    }
+  },
+
+  deleteTransactions: async (ids: string[]) => {
+    try {
+      if (ids.length === 0) return
+
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .in('id', ids)
+
+      if (error) throw error
+
+      set((state) => ({
+        transactions: state.transactions.filter((t) => !ids.includes(t.id))
       }))
     } catch (error) {
       set({ error: (error as Error).message })

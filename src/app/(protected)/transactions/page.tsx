@@ -10,16 +10,19 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Trash2, Edit, Filter, Download } from 'lucide-react'
+import { Plus, Trash2, Edit, Download } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ImportTransactionsModal } from '@/components/forms/import-transactions-modal'
+import { Checkbox } from '@/components/ui/checkbox'
 
 export default function TransactionsPage() {
-  const { transactions, loading, error, fetchTransactions, deleteTransaction } = useTransactionsStore()
+  const { transactions, loading, error, fetchTransactions, deleteTransaction, deleteTransactions } = useTransactionsStore()
   const { categories } = useCategoriesStore()
   const { cards, fetchCards } = useCardsStore()
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isDeleting, setIsDeleting] = useState(false)
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
@@ -37,6 +40,17 @@ export default function TransactionsPage() {
     fetchTransactions(filters)
   }, [])
 
+  // Limpa seleção quando as transações mudarem (apenas IDs que não existem mais)
+  useEffect(() => {
+    const existingIds = new Set(transactions.map(t => t.id))
+    const newSelectedIds = new Set(
+      Array.from(selectedIds).filter(id => existingIds.has(id))
+    )
+    if (newSelectedIds.size !== selectedIds.size) {
+      setSelectedIds(newSelectedIds)
+    }
+  }, [transactions])
+
   const applyFilters = () => {
     fetchTransactions(filters)
   }
@@ -51,6 +65,49 @@ export default function TransactionsPage() {
       toast.error('Erro ao excluir transação')
     }
   }
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(transactions.map(t => t.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    const newSelected = new Set(selectedIds)
+    if (checked) {
+      newSelected.add(id)
+    } else {
+      newSelected.delete(id)
+    }
+    setSelectedIds(newSelected)
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return
+
+    const count = selectedIds.size
+    const message = count === 1
+      ? `Tem certeza que deseja excluir ${count} transação?`
+      : `Tem certeza que deseja excluir ${count} transações?`
+
+    if (!confirm(message)) return
+
+    setIsDeleting(true)
+    try {
+      await deleteTransactions(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      toast.success(`${count} transação${count > 1 ? 'ões' : ''} excluída${count > 1 ? 's' : ''} com sucesso!`)
+    } catch (error) {
+      toast.error('Erro ao excluir transações')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const isAllSelected = transactions.length > 0 && selectedIds.size === transactions.length
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < transactions.length
 
   const getCategoryName = (categoryId: string) => {
     const category = categories.find(cat => cat.id === categoryId)
@@ -220,10 +277,30 @@ export default function TransactionsPage() {
       {/* Lista de Transações */}
       <Card>
         <CardHeader>
-          <CardTitle>Transações Recentes</CardTitle>
-          <CardDescription>
-            Últimas transações do mês atual
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Transações Recentes</CardTitle>
+              <CardDescription>
+                Últimas transações do mês atual
+              </CardDescription>
+            </div>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground">
+                  {selectedIds.size} selecionada{selectedIds.size > 1 ? 's' : ''}
+                </span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteSelected}
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  {isDeleting ? 'Excluindo...' : `Excluir ${selectedIds.size}`}
+                </Button>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {transactions.length === 0 ? (
@@ -242,6 +319,14 @@ export default function TransactionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={isAllSelected}
+                      onCheckedChange={handleSelectAll}
+                      indeterminate={isIndeterminate}
+                      aria-label="Selecionar todas as transações"
+                    />
+                  </TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Data</TableHead>
@@ -252,7 +337,17 @@ export default function TransactionsPage() {
               </TableHeader>
               <TableBody>
                 {transactions.map((transaction) => (
-                  <TableRow key={transaction.id}>
+                  <TableRow 
+                    key={transaction.id}
+                    className={selectedIds.has(transaction.id) ? 'bg-muted/50' : ''}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds.has(transaction.id)}
+                        onCheckedChange={(checked) => handleSelectOne(transaction.id, checked as boolean)}
+                        aria-label={`Selecionar ${transaction.description}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">
                       {transaction.description}
                     </TableCell>
@@ -279,6 +374,7 @@ export default function TransactionsPage() {
                           variant="outline"
                           size="sm"
                           asChild
+                          disabled={isDeleting}
                         >
                           <Link href={`/transactions/edit/${transaction.id}`}>
                             <Edit className="w-4 h-4" />
@@ -288,6 +384,7 @@ export default function TransactionsPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleDelete(transaction.id, transaction.description)}
+                          disabled={isDeleting || selectedIds.has(transaction.id)}
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
