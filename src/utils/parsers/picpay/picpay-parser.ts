@@ -308,6 +308,9 @@ export class PicPayParser extends BaseBankStatementParser {
       // Remove parcelamento da descrição (mantém apenas a descrição base)
       // IMPORTANTE: Usa o parcelamento extraído para remover corretamente
       let descricaoLimpa = descricaoOriginal
+      
+      // CRÍTICO: Remove parcelamento mesmo que não tenha sido extraído corretamente
+      // Isso garante que "PARC" solto seja removido (ex: "SHEIN *SHEIN.PARC", "GABRIELA PARC")
       if (parcelamento) {
         // Remove diferentes formatos de parcelamento usando o valor extraído
         // Primeiro tenta remover com o formato exato encontrado
@@ -320,9 +323,22 @@ export class PicPayParser extends BaseBankStatementParser {
           .replace(/PARC\d{1,2}\/\d{1,2}/gi, '') // Remove qualquer formato PARCXX/YY como fallback
           .replace(/parcela\s*\d{1,2}\s*\/\s*\d{1,2}/gi, '') // Remove formato "Parcela X/Y"
           .trim()
-        
-        console.log(`[${this.bankName} Parser] Descrição após remoção de parcelamento: "${descricaoLimpa.substring(0, 50)}"`)
       }
+      
+      // CRÍTICO: Remove qualquer ocorrência de "PARC" que possa ter sobrado
+      // Isso resolve casos como "SHEIN *SHEIN.PARC", "GABRIELA PARC", "ANDERSONTEIXEIPARC", etc.
+      // Remove "PARC" seguido de números (parcelamento completo)
+      descricaoLimpa = descricaoLimpa
+        .replace(/PARC\d{1,2}\/\d{1,2}/gi, '') // Remove PARCXX/YY
+        .replace(/PARC\d{1,2}\/0/gi, '') // Remove PARCXX/0 (parcelamento parcial)
+        .replace(/PARC\d{1,2}/gi, '') // Remove PARC seguido de apenas números
+        .replace(/PARC\s*$/gi, '') // Remove "PARC" no final da string
+        .replace(/\s+PARC\s*/gi, ' ') // Remove "PARC" isolado (com espaços)
+        .replace(/PARC$/gi, '') // Remove "PARC" no final (sem espaço)
+        .replace(/\s+/g, ' ') // Remove múltiplos espaços
+        .trim()
+      
+      console.log(`[${this.bankName} Parser] Descrição após remoção de parcelamento: "${descricaoLimpa.substring(0, 50)}" (original: "${descricaoOriginal.substring(0, 50)}")`)
 
       // Formata data
       let data: string
@@ -448,8 +464,21 @@ export class PicPayParser extends BaseBankStatementParser {
         }
       }
 
-      // Limpa descrição final
+      // Limpa descrição final - CRÍTICO: normaliza e valida antes de adicionar
       descricaoLimpa = this.normalizeText(descricaoLimpa)
+      
+      // Validação final: verifica se a descrição ainda contém "PARC" (não deveria)
+      if (descricaoLimpa.toUpperCase().includes('PARC')) {
+        console.log(`[${this.bankName} Parser] ⚠️ Descrição ainda contém PARC após limpeza: "${descricaoLimpa}"`)
+        // Remove qualquer ocorrência restante de PARC
+        descricaoLimpa = descricaoLimpa
+          .replace(/PARC\d{0,2}\/?\d{0,2}/gi, '')
+          .replace(/PARC\s*/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim()
+        console.log(`[${this.bankName} Parser] 🔧 Descrição após remoção adicional de PARC: "${descricaoLimpa.substring(0, 50)}"`)
+      }
+      
       if (descricaoLimpa.length < 3) {
         console.log(`[${this.bankName} Parser] ⚠️ Descrição muito curta após limpeza: "${descricaoLimpa}" (original: "${descricaoOriginal.substring(0, 50)}")`)
         continue
