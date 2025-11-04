@@ -49,6 +49,7 @@ export default function TransactionsPage() {
     if (newSelectedIds.size !== selectedIds.size) {
       setSelectedIds(newSelectedIds)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactions])
 
   const applyFilters = () => {
