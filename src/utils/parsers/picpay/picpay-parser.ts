@@ -425,15 +425,16 @@ export class PicPayParser extends BaseBankStatementParser {
   /**
    * Extrai parcelamento específico para PicPay, evitando capturar números do valor
    * CRÍTICO: Esta função deve capturar APENAS parcelamento explícito na descrição (PARCXX/YY)
-   * NÃO deve usar padrões genéricos que podem capturar números do valor
+   * NÃO usa método base nem padrões genéricos que podem capturar números do valor
    */
   private extractInstallmentsPicPay(description: string, linhaCompleta: string): { current: number; total: number } | null {
     // CRÍTICO: Para PicPay, APENAS aceita padrões explícitos PARCXX/YY
-    // NÃO usa padrões genéricos que podem capturar números do valor
-    const descricaoLimpa = description.trim()
+    // NÃO usa this.extractInstallments() que pode usar padrões genéricos
+    const descricaoLimpa = description.trim().toUpperCase()
     
-    // Padrão 1: PARC seguido de 1-2 dígitos, barra, 1-2 dígitos (mais comum)
+    // Padrão único e específico: PARC seguido de 1-2 dígitos, barra, 1-2 dígitos
     // Exemplo: "SHEINPARC01/02", "EC *LPARC03/05", "ANDERSONTEIXEIPARC02/05"
+    // IMPORTANTE: Busca APENAS o padrão PARC, não aceita outros formatos
     const parcelaMatch = descricaoLimpa.match(/PARC(\d{1,2})\/(\d{1,2})/i)
     
     if (parcelaMatch) {
@@ -450,29 +451,30 @@ export class PicPayParser extends BaseBankStatementParser {
           const valorNumero = this.parseMonetaryValue(ultimoValor)
           const valorInteiro = Math.floor(valorNumero).toString()
           
-          // Se o total ou current aparecem no valor como número completo, é suspeito
-          // Exemplo: total=57 e valor=576,00 -> suspeito (57 está no início de 576)
-          // Exemplo: total=5 e valor=576,00 -> OK (5 é parte normal de 576)
-          if (valorInteiro.length >= 2 && (
-            valorInteiro.startsWith(total.toString()) || 
-            valorInteiro.startsWith(current.toString())
-          )) {
-            // Se o número do parcelamento está no início do valor inteiro, pode ser falso positivo
-            // Mas se o padrão PARC está na descrição, é provavelmente real
-            // Verifica se o parcelamento está antes do valor na linha
-            const indiceParcela = descricaoLimpa.indexOf(parcelaMatch[0])
-            const indiceValor = linhaCompleta.indexOf(ultimoValor)
+          // CRÍTICO: Se o total ou current aparecem como número completo no início do valor, descarta
+          // Exemplo: total=57 e valor=576,00 -> descarta (57 está no início de 576)
+          // Exemplo: total=5 e valor=576,00 -> aceita (5 é parte normal de 576, mas pode ser correto)
+          // Para ser mais seguro, só descarta se ambos os dígitos correspondem
+          if (valorInteiro.length >= 3) {
+            const doisPrimeirosDigitos = valorInteiro.substring(0, 2)
+            const tresPrimeirosDigitos = valorInteiro.length >= 4 ? valorInteiro.substring(0, 3) : null
             
-            // Se o parcelamento está DEPOIS do valor na linha, é falso positivo
-            if (indiceValor !== -1 && indiceParcela !== -1) {
-              const descricaoCompleta = linhaCompleta.substring(0, indiceValor)
-              const indiceParcelaNaLinha = descricaoCompleta.indexOf(parcelaMatch[0])
-              
-              if (indiceParcelaNaLinha === -1) {
-                // Parcelamento não está antes do valor na linha completa - pode ser falso positivo
-                console.log(`[${this.bankName} Parser] ⚠️ Parcelamento ${current}/${total} suspeito (valor: ${valorNumero.toFixed(2)}) - não encontrado antes do valor na linha`)
-                // Mas ainda retorna porque o padrão PARC está presente na descrição
-              }
+            // Se o total de 2 dígitos aparece no início do valor, é falso positivo
+            if (total >= 10 && doisPrimeirosDigitos === total.toString().padStart(2, '0')) {
+              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} descartado: total ${total} aparece no início do valor ${valorNumero.toFixed(2)}`)
+              return null
+            }
+            
+            // Se o total de 3 dígitos aparece no início do valor, é falso positivo
+            if (total >= 100 && tresPrimeirosDigitos && tresPrimeirosDigitos === total.toString().padStart(3, '0')) {
+              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} descartado: total ${total} aparece no início do valor ${valorNumero.toFixed(2)}`)
+              return null
+            }
+            
+            // Se o current de 2 dígitos aparece no início do valor, é falso positivo
+            if (current >= 10 && doisPrimeirosDigitos === current.toString().padStart(2, '0')) {
+              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} descartado: current ${current} aparece no início do valor ${valorNumero.toFixed(2)}`)
+              return null
             }
           }
         }
