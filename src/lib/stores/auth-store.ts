@@ -203,6 +203,20 @@ export const useAuthStore = create<AuthState>()(
           const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
           if (sessionError) {
+            // Trata especificamente o erro de refresh token já usado
+            if (sessionError.message?.includes('refresh_token_already_used') || 
+                (sessionError as any).code === 'refresh_token_already_used') {
+              console.warn('Refresh token já foi usado, limpando sessão...')
+              // Limpa a sessão inválida
+              await supabase.auth.signOut()
+              set({ user: null, loading: false })
+              // Limpa o localStorage
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('auth-storage')
+              }
+              return
+            }
+            
             console.error('Erro ao obter sessão:', sessionError)
             set({ user: null, loading: false })
             return
@@ -232,7 +246,21 @@ export const useAuthStore = create<AuthState>()(
             // Não há sessão, limpa o estado
             set({ user: null, loading: false })
           }
-        } catch (error) {
+        } catch (error: any) {
+          // Trata especificamente o erro de refresh token já usado
+          if (error?.message?.includes('refresh_token_already_used') || 
+              error?.code === 'refresh_token_already_used') {
+            console.warn('Refresh token já foi usado, limpando sessão...')
+            // Limpa a sessão inválida
+            await supabase.auth.signOut().catch(() => {})
+            set({ user: null, loading: false })
+            // Limpa o localStorage
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('auth-storage')
+            }
+            return
+          }
+          
           console.error('Erro ao verificar autenticação:', error)
           set({ user: null, loading: false })
         }

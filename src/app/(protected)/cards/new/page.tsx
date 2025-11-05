@@ -60,16 +60,25 @@ export default function NewCardPage() {
       const { data: sessionData, error: sessionError } = await sb.auth.getSession()
       
       if (!sessionData.session || sessionError) {
-        // Tenta renovar a sessão
-        const { data: refreshData, error: refreshError } = await sb.auth.refreshSession()
-        
-        if (!refreshData.session || refreshError) {
+        // Trata especificamente o erro de refresh token já usado
+        if (sessionError?.message?.includes('refresh_token_already_used') || 
+            (sessionError as any)?.code === 'refresh_token_already_used') {
+          console.warn('Refresh token já foi usado, redirecionando para login...')
           toast.error('Sessão expirada. Faça login novamente.')
+          await sb.auth.signOut().catch(() => {})
           setTimeout(() => {
             router.push('/login')
           }, 2000)
           return
         }
+        
+        // NÃO tenta refresh manual - deixa o autoRefreshToken fazer isso
+        // Chamar refreshSession() manualmente pode causar race conditions
+        toast.error('Sessão expirada. Faça login novamente.')
+        setTimeout(() => {
+          router.push('/login')
+        }, 2000)
+        return
       }
 
       // Normaliza últimos 4 dígitos

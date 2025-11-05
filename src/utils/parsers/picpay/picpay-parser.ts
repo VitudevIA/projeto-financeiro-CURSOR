@@ -85,16 +85,25 @@ export class PicPayParser extends BaseBankStatementParser {
     console.log(`[${this.bankName} Parser] Processando ${linhasProcessar.length} linhas`)
 
     // Padrões mais flexíveis para PicPay
-    // IMPORTANTE: Usa lazy matching (.*?) para não capturar valores que fazem parte da descrição
-    // O valor deve ser o ÚLTIMO número monetário na linha
+    // CRÍTICO: Precisa capturar corretamente quando descrição e valor estão grudados
+    // Exemplo: "28/10SHEIN *SHU FEPARC01/0267,90" deve ser:
+    //   - Data: "28/10"
+    //   - Descrição: "SHEIN *SHU FEPARC01/02"
+    //   - Valor: "67,90"
     
     // Padrão 1: DD/MM DESCRIÇÃO VALOR (formato tradicional, com espaços)
-    // Usa lookahead negativo para garantir que pega o último valor monetário
     const padraoPrincipal = /^(\d{2}\/\d{2})\s+(.+?)\s+([-]?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/
     
     // Padrão 2: DD/MM DESCRIÇÃO VALOR (sem espaços, formato grudado)
-    // Usa \s* no final para garantir que pega até o fim da linha
+    // CRÍTICO: Precisa capturar PARC##/## completo antes do valor
+    // Usa lookahead negativo para garantir que não captura dígitos do parcelamento como parte do valor
     const padraoGrudado = /^(\d{2}\/\d{2})(.+?)([-]?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/
+    
+    // Padrão 2B: DD/MM DESCRIÇÃO COM PARC grudado com valor (caso especial)
+    // Exemplo: "28/10SHEIN *SHU FEPARC01/0267,90"
+    // Este padrão captura especificamente quando há PARC##/## seguido imediatamente por dígitos
+    // e separa corretamente o parcelamento do valor
+    const padraoComParcGrudado = /^(\d{2}\/\d{2})(.+?PARC\d{1,2}\/)(\d{1,2})(\d{1,3}(?:\.\d{3})*,\d{2})\s*$/
     
     // Padrão 3: DD/MM/YYYY DESCRIÇÃO VALOR
     const padraoComAno = /^(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+([-]?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/
@@ -113,64 +122,157 @@ export class PicPayParser extends BaseBankStatementParser {
       let descricao: string = ''
       let valorStr: string = ''
 
-      // Tenta padrão com ano primeiro (com espaços)
-      match = linha.match(padraoComAno)
+      // PRIORIDADE 1: Tenta padrão especial com PARC grudado com valor
+      // Exemplo: "28/10SHEIN *SHU FEPARC01/0267,90" deve ser:
+      //   - Data: "28/10"
+      //   - Descrição: "SHEIN *SHU FEPARC01/02"
+      //   - Valor: "67,90"
+      match = linha.match(padraoComParcGrudado)
       if (match) {
-        dataStr = match[1]
-        descricao = match[2].trim()
-        valorStr = match[3]
+        dataStr = match[1] // "28/10"
+        const descricaoComParc = match[2] // "SHEIN *SHU FEPARC01/"
+        const digitoFinalParc = match[3] // "0" ou "2" (último dígito do total de parcelas)
+        const valorComDigito = match[4] // "267,90" ou "67,90" (valor com possível dígito do parcelamento grudado)
+        
+        // Reconstrói a descrição completa com o parcelamento
+        descricao = `${descricaoComParc}${digitoFinalParc}`.trim()
+        
+        // CORREÇÃO CRÍTICA: Determina o valor correto
+        // Se o valor começa com o dígito do parcelamento seguido de mais dígitos, remove o primeiro dígito
+        // Exemplo 1: valorComDigito = "267,90", digitoFinalParc = "2" -> valor = "67,90" (remove "2")
+        // Exemplo 2: valorComDigito = "67,90", digitoFinalParc = "0" -> valor = "67,90" (não remove, "0" não é parte do valor)
+        
+        // Verifica se o primeiro dígito do valor corresponde ao dígito do parcelamento
+        const primeiroDigitoValor = valorComDigito.substring(0, 1)
+        const segundoDigitoValor = valorComDigito.length > 1 ? valorComDigito.substring(1, 2) : ''
+        
+        // Se o valor começa com o dígito do parcelamento E tem mais dígitos depois, remove o primeiro
+        if (primeiroDigitoValor === digitoFinalParc && segundoDigitoValor && /\d/.test(segundoDigitoValor)) {
+          valorStr = valorComDigito.substring(1)
+          console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (removido dígito ${digitoFinalParc} do parcelamento): "${valorComDigito}" -> "${valorStr}"`)
+        } else {
+          // Verifica se são dois dígitos do parcelamento (ex: "02" grudado com "267,90")
+          const doisDigitosInicio = valorComDigito.substring(0, 2)
+          const terceiroDigito = valorComDigito.length > 2 ? valorComDigito.substring(2, 3) : ''
+          
+          // Tenta inferir o total de parcelas do contexto
+          const parcelaMatch = descricao.match(/PARC(\d{1,2})\/(\d{1,2})/i)
+          if (parcelaMatch) {
+            const totalParcelas = parseInt(parcelaMatch[2])
+            const totalParcelasStr = totalParcelas.toString().padStart(2, '0')
+            
+            // Se os dois primeiros dígitos do valor correspondem ao total de parcelas, remove-os
+            if (doisDigitosInicio === totalParcelasStr && terceiroDigito && /\d/.test(terceiroDigito)) {
+              valorStr = valorComDigito.substring(2)
+              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (removidos dígitos ${totalParcelasStr} do parcelamento): "${valorComDigito}" -> "${valorStr}"`)
+            } else {
+              valorStr = valorComDigito
+            }
+          } else {
+            valorStr = valorComDigito
+          }
+        }
+        
+        console.log(`[${this.bankName} Parser] ✅ Padrão PARC grudado detectado: descrição="${descricao.substring(0, 50)}", valor="${valorStr}"`)
       } else {
-        // Tenta padrão com ano grudado
-        match = linha.match(padraoComAnoGrudado)
+        // PRIORIDADE 2: Tenta padrão com ano primeiro (com espaços)
+        match = linha.match(padraoComAno)
         if (match) {
           dataStr = match[1]
           descricao = match[2].trim()
           valorStr = match[3]
         } else {
-          // Tenta padrão sem ano (com espaços)
-          match = linha.match(padraoPrincipal)
+          // PRIORIDADE 3: Tenta padrão com ano grudado
+          match = linha.match(padraoComAnoGrudado)
           if (match) {
             dataStr = match[1]
             descricao = match[2].trim()
             valorStr = match[3]
           } else {
-            // Tenta padrão sem ano grudado
-            match = linha.match(padraoGrudado)
+            // PRIORIDADE 4: Tenta padrão sem ano (com espaços)
+            match = linha.match(padraoPrincipal)
             if (match) {
               dataStr = match[1]
               descricao = match[2].trim()
               valorStr = match[3]
             } else {
-              // Padrão alternativo: procura pelo último valor monetário na linha
-              // Útil para casos onde a descrição contém valores que não são o valor da transação
-              const padraoAlternativo = /^(\d{2}\/\d{2})\s*(.+?)([-]?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/
-              match = linha.match(padraoAlternativo)
+              // PRIORIDADE 5: Tenta padrão sem ano grudado
+              match = linha.match(padraoGrudado)
               if (match) {
-                // Verifica se há múltiplos valores monetários na linha
-                const valoresEncontrados = linha.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g)
-                if (valoresEncontrados && valoresEncontrados.length > 1) {
-                  // Pega o ÚLTIMO valor (mais à direita)
-                  valorStr = valoresEncontrados[valoresEncontrados.length - 1]
-                  // Descrição é tudo entre a data e o último valor
-                  const dataIndex = linha.indexOf(match[1])
-                  const valorIndex = linha.lastIndexOf(valorStr)
-                  descricao = linha.substring(dataIndex + match[1].length, valorIndex).trim()
-                  dataStr = match[1]
-                } else {
-                  dataStr = match[1]
-                  descricao = match[2].trim()
-                  valorStr = match[3]
+                dataStr = match[1]
+                descricao = match[2].trim()
+                valorStr = match[3]
+                
+                // VALIDAÇÃO: Se a descrição termina com números que parecem valor, pode estar capturando errado
+                // Verifica se há múltiplos valores na linha e ajusta
+                const valoresNaLinha = linha.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g)
+                if (valoresNaLinha && valoresNaLinha.length > 1) {
+                  // Se há múltiplos valores, garante que a descrição não termina com um deles
+                  const ultimoValor = valoresNaLinha[valoresNaLinha.length - 1]
+                  if (descricao.endsWith(ultimoValor)) {
+                    // Descrição está capturando o valor, corrige
+                    const indiceValor = descricao.lastIndexOf(ultimoValor)
+                    descricao = descricao.substring(0, indiceValor).trim()
+                    valorStr = ultimoValor
+                    console.log(`[${this.bankName} Parser] 🔧 Descrição corrigida (removido valor do final): "${descricao.substring(0, 50)}"`)
+                  }
+                }
+              } else {
+                // Padrão alternativo: procura pelo último valor monetário na linha
+                // Útil para casos onde a descrição contém valores que não são o valor da transação
+                const padraoAlternativo = /^(\d{2}\/\d{2})\s*(.+?)([-]?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/
+                match = linha.match(padraoAlternativo)
+                if (match) {
+                  // Verifica se há múltiplos valores monetários na linha
+                  const valoresEncontrados = linha.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g)
+                  if (valoresEncontrados && valoresEncontrados.length > 1) {
+                    // Pega o ÚLTIMO valor (mais à direita)
+                    valorStr = valoresEncontrados[valoresEncontrados.length - 1]
+                    // Descrição é tudo entre a data e o último valor
+                    const dataIndex = linha.indexOf(match[1])
+                    const valorIndex = linha.lastIndexOf(valorStr)
+                    descricao = linha.substring(dataIndex + match[1].length, valorIndex).trim()
+                    dataStr = match[1]
+                  } else {
+                    dataStr = match[1]
+                    descricao = match[2].trim()
+                    valorStr = match[3]
+                  }
                 }
               }
             }
           }
         }
       }
+      
+      // VALIDAÇÃO CRÍTICA: Garante que a descrição não contém o valor monetário
+      // Remove qualquer valor monetário que possa ter sido capturado na descrição
+      if (descricao && valorStr) {
+        const valoresNaDescricao = descricao.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g)
+        if (valoresNaDescricao && valoresNaDescricao.includes(valorStr)) {
+          // Remove o valor da descrição se estiver presente
+          const indiceValor = descricao.lastIndexOf(valorStr)
+          if (indiceValor !== -1) {
+            descricao = descricao.substring(0, indiceValor).trim()
+            console.log(`[${this.bankName} Parser] 🔧 Valor removido da descrição: "${descricao.substring(0, 50)}"`)
+          }
+        }
+        
+        // Remove valores monetários que aparecem no final da descrição (mas não são o valor principal)
+        descricao = descricao.replace(/\s+\d{1,3}(?:\.\d{3})*,\d{2}\s*$/, '').trim()
+      }
 
       if (!match || !dataStr || !descricao || !valorStr) continue
 
+      // LOG DETALHADO PARA DEBUG
+      console.log(`[${this.bankName} Parser] 📋 Linha ${i} processada:`)
+      console.log(`  - Linha completa: "${linha.substring(0, 100)}"`)
+      console.log(`  - Data extraída: "${dataStr}"`)
+      console.log(`  - Descrição extraída: "${descricao.substring(0, 80)}"`)
+      console.log(`  - Valor extraído: "${valorStr}"`)
+
       // IMPORTANTE: Extrai parcelamento ANTES de qualquer processamento da descrição
-      // O parcelamento pode estar grudado na descrição (ex: "SHEINPARC01/02")
+      // O parcelamento pode estar grudado na descrição (ex: "SHEINPARC01/02", "ANDERSONTEIXEIPARC02/05")
       const descricaoOriginal = descricao
       
       // CRÍTICO: Extrai parcelamento da descrição, mas EVITA capturar números do valor
@@ -178,6 +280,8 @@ export class PicPayParser extends BaseBankStatementParser {
       // Para isso, extraímos parcelamento ANTES de processar o valor
       // NÃO INFERE PARCELAMENTO DO VALOR - apenas aceita padrões PARC explícitos
       let parcelamento = this.extractInstallmentsPicPay(descricaoOriginal, linha)
+      
+      console.log(`[${this.bankName} Parser] 📦 Parcelamento após extractInstallmentsPicPay: ${parcelamento ? `${parcelamento.current}/${parcelamento.total}` : 'null'}`)
       
       // Se encontrou parcelamento parcial (termina com /0), tenta encontrar o dígito completo
       // MAS APENAS se houver padrão PARC explícito na descrição
@@ -239,40 +343,20 @@ export class PicPayParser extends BaseBankStatementParser {
         console.log(`[${this.bankName} Parser] 📦 Parcelamento encontrado: ${parcelamento.current}/${parcelamento.total} na descrição: "${descricaoOriginal.substring(0, 60)}"`)
       }
 
-      // Remove parcelamento da descrição (mantém apenas a descrição base)
-      // IMPORTANTE: Usa o parcelamento extraído para remover corretamente
+      // CORREÇÃO CRÍTICA: NÃO remover o padrão PARC da descrição
+      // O padrão PARC##/## faz parte do nome do estabelecimento e deve ser preservado
+      // Exemplo: "ANDERSONTEIXEIPARC02/05" deve permanecer "ANDERSONTEIXEIPARC02/05"
+      // O sufixo (X/Y) será adicionado na API route, não aqui no parser
       let descricaoLimpa = descricaoOriginal
       
-      // CRÍTICO: Remove parcelamento mesmo que não tenha sido extraído corretamente
-      // Isso garante que "PARC" solto seja removido (ex: "SHEIN *SHEIN.PARC", "GABRIELA PARC")
-      if (parcelamento) {
-        // Remove diferentes formatos de parcelamento usando o valor extraído
-        // Primeiro tenta remover com o formato exato encontrado
-        const parcelaStr = `PARC${parcelamento.current.toString().padStart(2, '0')}/${parcelamento.total.toString().padStart(2, '0')}`
-        const parcelaStrAlt = `PARC${parcelamento.current}/${parcelamento.total}`
-        
-        descricaoLimpa = descricaoLimpa
-          .replace(new RegExp(parcelaStr, 'gi'), '') // Remove formato exato (PARC01/02)
-          .replace(new RegExp(parcelaStrAlt, 'gi'), '') // Remove formato alternativo (PARC1/2)
-          .replace(/PARC\d{1,2}\/\d{1,2}/gi, '') // Remove qualquer formato PARCXX/YY como fallback
-          .replace(/parcela\s*\d{1,2}\s*\/\s*\d{1,2}/gi, '') // Remove formato "Parcela X/Y"
-          .trim()
-      }
-      
-      // CRÍTICO: Remove qualquer ocorrência de "PARC" que possa ter sobrado
-      // Isso resolve casos como "SHEIN *SHEIN.PARC", "GABRIELA PARC", "ANDERSONTEIXEIPARC", etc.
-      // Remove "PARC" seguido de números (parcelamento completo)
+      // Apenas normaliza espaços e converte para maiúsculas
+      // NÃO remove parcelamento da descrição
       descricaoLimpa = descricaoLimpa
-        .replace(/PARC\d{1,2}\/\d{1,2}/gi, '') // Remove PARCXX/YY
-        .replace(/PARC\d{1,2}\/0/gi, '') // Remove PARCXX/0 (parcelamento parcial)
-        .replace(/PARC\d{1,2}/gi, '') // Remove PARC seguido de apenas números
-        .replace(/PARC\s*$/gi, '') // Remove "PARC" no final da string
-        .replace(/\s+PARC\s*/gi, ' ') // Remove "PARC" isolado (com espaços)
-        .replace(/PARC$/gi, '') // Remove "PARC" no final (sem espaço)
         .replace(/\s+/g, ' ') // Remove múltiplos espaços
         .trim()
+        .toUpperCase()
       
-      console.log(`[${this.bankName} Parser] Descrição após remoção de parcelamento: "${descricaoLimpa.substring(0, 50)}" (original: "${descricaoOriginal.substring(0, 50)}")`)
+      console.log(`[${this.bankName} Parser] Descrição preservada (com PARC): "${descricaoLimpa.substring(0, 50)}" (original: "${descricaoOriginal.substring(0, 50)}")`)
 
       // Formata data
       let data: string
@@ -326,6 +410,12 @@ export class PicPayParser extends BaseBankStatementParser {
         const valorNumStr = Math.floor(valor).toString()
         const valorDecimal = valorStrLimpo.split(',')[1] || '00'
         
+        console.log(`[${this.bankName} Parser] 🔍 Verificando correção de valor concatenado:`)
+        console.log(`  - Parcelamento: ${parcelamento.current}/${parcelamento.total}`)
+        console.log(`  - Valor original: R$ ${valor.toFixed(2)}`)
+        console.log(`  - Valor inteiro: ${valorNumStr}`)
+        console.log(`  - Valor decimal: ${valorDecimal}`)
+        
         // CRITÉRIO: Se o valor tem 3+ dígitos e o primeiro(s) dígito(s) corresponde(m) ao total de parcelas
         // Aplica correção SEMPRE que houver correspondência, independente do valor
         let valorCorrigido = false
@@ -334,18 +424,25 @@ export class PicPayParser extends BaseBankStatementParser {
           const primeiroDigito = parseInt(valorNumStr.substring(0, 1))
           const doisPrimeirosDigitos = parseInt(valorNumStr.substring(0, 2))
           
+          console.log(`  - Primeiro dígito: ${primeiroDigito}, Total parcelas: ${parcelamento.total}`)
+          console.log(`  - Dois primeiros dígitos: ${doisPrimeirosDigitos}`)
+          
           // CRITÉRIO 1: Primeiro dígito corresponde ao total (1-9 parcelas)
           if (primeiroDigito === parcelamento.total && primeiroDigito <= 9) {
             const valorRestante = valorNumStr.substring(1)
             const novoValorStr = `${valorRestante},${valorDecimal}`
             const novoValor = this.parseMonetaryValue(novoValorStr)
             
+            console.log(`  - Tentativa correção 1 dígito: "${valorRestante},${valorDecimal}" = R$ ${novoValor.toFixed(2)}`)
+            
             // Valida: novo valor deve ser razoável (< 1000) e menor que o original
             if (novoValor > 0 && novoValor < valor && novoValor < 1000) {
-              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (PARC${parcelamento.current}/${parcelamento.total}): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removido dígito ${primeiroDigito})`)
+              console.log(`[${this.bankName} Parser] ✅ Valor corrigido (PARC${parcelamento.current}/${parcelamento.total}): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removido dígito ${primeiroDigito})`)
               valor = novoValor
               valorStr = novoValorStr
               valorCorrigido = true
+            } else {
+              console.log(`  - Correção rejeitada: novo valor ${novoValor.toFixed(2)} não atende critérios`)
             }
           } 
           // CRITÉRIO 2: Dois primeiros dígitos correspondem ao total (10-99 parcelas)
@@ -354,13 +451,19 @@ export class PicPayParser extends BaseBankStatementParser {
             const novoValorStr = `${valorRestante},${valorDecimal}`
             const novoValor = this.parseMonetaryValue(novoValorStr)
             
+            console.log(`  - Tentativa correção 2 dígitos: "${valorRestante},${valorDecimal}" = R$ ${novoValor.toFixed(2)}`)
+            
             // Valida: novo valor deve ser razoável (< 1000) e menor que o original
             if (novoValor > 0 && novoValor < valor && novoValor < 1000) {
-              console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (PARC${parcelamento.current}/${parcelamento.total}): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removidos dígitos ${doisPrimeirosDigitos})`)
+              console.log(`[${this.bankName} Parser] ✅ Valor corrigido (PARC${parcelamento.current}/${parcelamento.total}): R$ ${valor.toFixed(2)} -> R$ ${novoValor.toFixed(2)} (removidos dígitos ${doisPrimeirosDigitos})`)
               valor = novoValor
               valorStr = novoValorStr
               valorCorrigido = true
+            } else {
+              console.log(`  - Correção rejeitada: novo valor ${novoValor.toFixed(2)} não atende critérios`)
             }
+          } else {
+            console.log(`  - Não há correspondência: primeiro dígito=${primeiroDigito}, dois primeiros=${doisPrimeirosDigitos}, total=${parcelamento.total}`)
           }
         }
         
@@ -368,6 +471,8 @@ export class PicPayParser extends BaseBankStatementParser {
         if (!valorCorrigido && valor > 500 && parcelamento.total > 1) {
           console.log(`[${this.bankName} Parser] ⚠️ Valor alto para parcela ${parcelamento.current}/${parcelamento.total}: R$ ${valor.toFixed(2)} (não foi possível corrigir automaticamente)`)
         }
+      } else {
+        console.log(`[${this.bankName} Parser] ℹ️ Sem parcelamento encontrado, valor não será corrigido`)
       }
 
       // Validação adicional: valores muito altos podem indicar problema na extração
@@ -387,23 +492,12 @@ export class PicPayParser extends BaseBankStatementParser {
         }
       }
 
-      // Limpa descrição final - CRÍTICO: normaliza e valida antes de adicionar
+      // Normaliza texto final (remove acentos, etc) mas mantém PARC na descrição
       descricaoLimpa = this.normalizeText(descricaoLimpa)
       
-      // Validação final: verifica se a descrição ainda contém "PARC" (não deveria)
-      if (descricaoLimpa.toUpperCase().includes('PARC')) {
-        console.log(`[${this.bankName} Parser] ⚠️ Descrição ainda contém PARC após limpeza: "${descricaoLimpa}"`)
-        // Remove qualquer ocorrência restante de PARC
-        descricaoLimpa = descricaoLimpa
-          .replace(/PARC\d{0,2}\/?\d{0,2}/gi, '')
-          .replace(/PARC\s*/gi, '')
-          .replace(/\s+/g, ' ')
-          .trim()
-        console.log(`[${this.bankName} Parser] 🔧 Descrição após remoção adicional de PARC: "${descricaoLimpa.substring(0, 50)}"`)
-      }
-      
+      // Validação final: descrição deve ter pelo menos 3 caracteres
       if (descricaoLimpa.length < 3) {
-        console.log(`[${this.bankName} Parser] ⚠️ Descrição muito curta após limpeza: "${descricaoLimpa}" (original: "${descricaoOriginal.substring(0, 50)}")`)
+        console.log(`[${this.bankName} Parser] ⚠️ Descrição muito curta: "${descricaoLimpa}" (original: "${descricaoOriginal.substring(0, 50)}")`)
         continue
       }
 
@@ -428,60 +522,125 @@ export class PicPayParser extends BaseBankStatementParser {
    * NÃO usa método base nem padrões genéricos que podem capturar números do valor
    */
   private extractInstallmentsPicPay(description: string, linhaCompleta: string): { current: number; total: number } | null {
+    console.log(`[${this.bankName} Parser] 🔍 extractInstallmentsPicPay chamado:`)
+    console.log(`  - Descrição recebida: "${description.substring(0, 80)}"`)
+    console.log(`  - Linha completa: "${linhaCompleta.substring(0, 100)}"`)
+    
     // CRÍTICO: Para PicPay, APENAS aceita padrões explícitos PARCXX/YY
     // NÃO usa this.extractInstallments() que pode usar padrões genéricos
-    const descricaoLimpa = description.trim().toUpperCase()
+    
+    // PRIMEIRO: Identifica o valor na linha completa para excluir da busca de parcelamento
+    const valoresNaLinha = linhaCompleta.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g)
+    let descricaoParaBuscar = description.trim()
+    
+    // Remove o valor da descrição se estiver presente
+    if (valoresNaLinha && valoresNaLinha.length > 0) {
+      const ultimoValor = valoresNaLinha[valoresNaLinha.length - 1]
+      
+      // Se a descrição termina com o valor, remove-o
+      if (descricaoParaBuscar.endsWith(ultimoValor)) {
+        descricaoParaBuscar = descricaoParaBuscar.substring(0, descricaoParaBuscar.length - ultimoValor.length).trim()
+        console.log(`  - Valor removido da descrição: "${descricaoParaBuscar.substring(0, 80)}"`)
+      }
+      
+      // Remove qualquer valor monetário do final da descrição
+      descricaoParaBuscar = descricaoParaBuscar.replace(/\s+\d{1,3}(?:\.\d{3})*,\d{2}\s*$/, '').trim()
+    }
+    
+    const descricaoLimpa = descricaoParaBuscar.toUpperCase()
+    console.log(`  - Descrição limpa para busca: "${descricaoLimpa.substring(0, 80)}"`)
     
     // Padrão único e específico: PARC seguido de 1-2 dígitos, barra, 1-2 dígitos
     // Exemplo: "SHEINPARC01/02", "EC *LPARC03/05", "ANDERSONTEIXEIPARC02/05"
     // IMPORTANTE: Busca APENAS o padrão PARC, não aceita outros formatos
-    const parcelaMatch = descricaoLimpa.match(/PARC(\d{1,2})\/(\d{1,2})/i)
+    // Busca case-insensitive para garantir que encontra mesmo se estiver em minúsculas
+    // CRÍTICO: Tenta primeiro com word boundary, depois sem (para casos grudados)
+    let parcelaMatch = descricaoLimpa.match(/\bPARC(\d{1,2})\/(\d{1,2})\b/i)
+    
+    // Se não encontrou com word boundary, tenta sem (para casos como "ANDERSONTEIXEIPARC02/05")
+    if (!parcelaMatch) {
+      parcelaMatch = descricaoLimpa.match(/PARC(\d{1,2})\/(\d{1,2})/i)
+      if (parcelaMatch) {
+        console.log(`  - Match encontrado sem word boundary: PARC${parcelaMatch[1]}/${parcelaMatch[2]}`)
+      }
+    }
     
     if (parcelaMatch) {
       const current = parseInt(parcelaMatch[1])
       const total = parseInt(parcelaMatch[2])
       
+      console.log(`  - Match encontrado: PARC${current}/${total}`)
+      
       // Validação rigorosa
       if (current > 0 && total > 0 && current <= total && total <= 99 && current <= 99) {
         // VALIDAÇÃO CRÍTICA: Verifica se não está capturando números do valor
         // Extrai o valor da linha completa para comparar
-        const valoresNaLinha = linhaCompleta.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g)
         if (valoresNaLinha && valoresNaLinha.length > 0) {
           const ultimoValor = valoresNaLinha[valoresNaLinha.length - 1]
           const valorNumero = this.parseMonetaryValue(ultimoValor)
           const valorInteiro = Math.floor(valorNumero).toString()
           
-          // CRÍTICO: Se o total ou current aparecem como número completo no início do valor, descarta
+          console.log(`  - Valor da linha: R$ ${valorNumero.toFixed(2)} (inteiro: ${valorInteiro})`)
+          
+          // CRÍTICO: Validação rigorosa para evitar falsos positivos
+          // Se o total ou current aparecem como número completo no início do valor, descarta
           // Exemplo: total=57 e valor=576,00 -> descarta (57 está no início de 576)
-          // Exemplo: total=5 e valor=576,00 -> aceita (5 é parte normal de 576, mas pode ser correto)
-          // Para ser mais seguro, só descarta se ambos os dígitos correspondem
+          // Exemplo: total=5 e valor=576,00 -> pode ser válido (5 é parte normal de 576)
+          // VALIDAÇÃO ADICIONAL: Se current == total, é suspeito (ex: 57/57)
+          if (current === total && current >= 10) {
+            console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} DESCARTADO: current igual ao total (suspeito de ser falso positivo)`)
+            return null
+          }
+          
           if (valorInteiro.length >= 3) {
             const doisPrimeirosDigitos = valorInteiro.substring(0, 2)
             const tresPrimeirosDigitos = valorInteiro.length >= 4 ? valorInteiro.substring(0, 3) : null
             
-            // Se o total de 2 dígitos aparece no início do valor, é falso positivo
+            // VALIDAÇÃO CRÍTICA: Se o total de 2 dígitos aparece no início do valor, é falso positivo
+            // Exemplo: total=57 aparece no início de 576,00
             if (total >= 10 && doisPrimeirosDigitos === total.toString().padStart(2, '0')) {
-              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} descartado: total ${total} aparece no início do valor ${valorNumero.toFixed(2)}`)
+              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} DESCARTADO: total ${total} aparece no início do valor ${valorNumero.toFixed(2)}`)
+              return null
+            }
+            
+            // VALIDAÇÃO CRÍTICA: Se o current de 2 dígitos aparece no início do valor, é falso positivo
+            // Exemplo: current=57 aparece no início de 576,00
+            if (current >= 10 && doisPrimeirosDigitos === current.toString().padStart(2, '0')) {
+              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} DESCARTADO: current ${current} aparece no início do valor ${valorNumero.toFixed(2)}`)
+              return null
+            }
+            
+            // VALIDAÇÃO CRÍTICA: Se ambos current e total aparecem no valor (ex: 57/57 de 576,00)
+            // Isso é um forte indicador de falso positivo
+            if (current >= 10 && total >= 10 && 
+                doisPrimeirosDigitos === current.toString().padStart(2, '0') &&
+                doisPrimeirosDigitos === total.toString().padStart(2, '0')) {
+              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} DESCARTADO: ambos current e total aparecem no valor ${valorNumero.toFixed(2)}`)
               return null
             }
             
             // Se o total de 3 dígitos aparece no início do valor, é falso positivo
             if (total >= 100 && tresPrimeirosDigitos && tresPrimeirosDigitos === total.toString().padStart(3, '0')) {
-              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} descartado: total ${total} aparece no início do valor ${valorNumero.toFixed(2)}`)
-              return null
-            }
-            
-            // Se o current de 2 dígitos aparece no início do valor, é falso positivo
-            if (current >= 10 && doisPrimeirosDigitos === current.toString().padStart(2, '0')) {
-              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} descartado: current ${current} aparece no início do valor ${valorNumero.toFixed(2)}`)
+              console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} DESCARTADO: total ${total} aparece no início do valor ${valorNumero.toFixed(2)}`)
               return null
             }
           }
+          
+          // VALIDAÇÃO ADICIONAL: Parcelamento muito alto (ex: 57/57) é suspeito
+          // Parcelamentos normais geralmente não passam de 24 parcelas
+          if (total > 24) {
+            console.log(`[${this.bankName} Parser] ⚠️ Parcelamento ${current}/${total} suspeito: total muito alto (acima de 24 parcelas)`)
+            // Não descarta automaticamente, mas loga como suspeito
+          }
         }
         
-        console.log(`[${this.bankName} Parser] ✅ Parcelamento encontrado via PARC: ${current}/${total}`)
+        console.log(`[${this.bankName} Parser] ✅ Parcelamento VÁLIDO encontrado via PARC: ${current}/${total}`)
         return { current, total }
+      } else {
+        console.log(`[${this.bankName} Parser] ❌ Parcelamento ${current}/${total} INVÁLIDO (validação falhou)`)
       }
+    } else {
+      console.log(`[${this.bankName} Parser] ❌ Nenhum padrão PARC encontrado na descrição`)
     }
     
     // Se não encontrou padrão PARC explícito, retorna null

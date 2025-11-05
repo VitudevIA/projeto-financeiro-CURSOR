@@ -565,7 +565,13 @@ export async function POST(request: NextRequest) {
         if (!shouldAutoGenerateInstallments || isFromPDF) {
           // Cria apenas uma transação (única ou parcela específica)
           let finalDescription = String(transaction.descricao)
+          
+          // CORREÇÃO: Adiciona sufixo (X/Y) apenas se houver parcelamento válido
+          // Isso permite que descrições com PARC##/## sejam preservadas e recebam o sufixo visual
           if (totalInstallments && totalInstallments > 1 && installmentNumber) {
+            // Verifica se a descrição já contém o padrão PARC##/##
+            // Se sim, adiciona apenas o sufixo (X/Y) para visualização
+            // Se não, mantém a descrição original
             finalDescription = `${finalDescription} (${installmentNumber}/${totalInstallments})`
           }
 

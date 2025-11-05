@@ -106,9 +106,35 @@ export async function middleware(request: NextRequest) {
       }
     )
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    let user
+    try {
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser()
+      
+      // Trata especificamente o erro de refresh token já usado
+      if (authError && 
+          (authError.message?.includes('refresh_token_already_used') || 
+           (authError as any).code === 'refresh_token_already_used')) {
+        // Não redireciona imediatamente - deixa o cliente tratar
+        // Apenas loga o erro silenciosamente
+        console.warn('Middleware: Refresh token já usado, será tratado no cliente')
+        user = null
+      } else {
+        user = authUser
+      }
+    } catch (error: any) {
+      // Trata erros de refresh token
+      if (error?.message?.includes('refresh_token_already_used') || 
+          error?.code === 'refresh_token_already_used') {
+        console.warn('Middleware: Refresh token já usado (catch), será tratado no cliente')
+        user = null
+      } else {
+        // Re-lança outros erros
+        throw error
+      }
+    }
 
     if (!user) {
       const redirectUrl = request.nextUrl.clone()
