@@ -88,14 +88,14 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
       // Add to local state - mapeia para o tipo Category
       const { categories } = get()
       // Cast para any para acessar campos que podem não estar no tipo Row do Supabase
-      const categoryData = data as any
+      const insertedCategory = data as any
       const mappedCategory: Category = {
-        id: categoryData.id,
-        name: categoryData.name,
-        type: (categoryData.type === 'income' || categoryData.type === 'expense') ? categoryData.type : 'expense',
-        user_id: categoryData.user_id || '',
-        created_at: categoryData.created_at || new Date().toISOString(),
-        updated_at: categoryData.updated_at || null,
+        id: insertedCategory.id,
+        name: insertedCategory.name,
+        type: (insertedCategory.type === 'income' || insertedCategory.type === 'expense') ? insertedCategory.type : 'expense',
+        user_id: insertedCategory.user_id || '',
+        created_at: insertedCategory.created_at || new Date().toISOString(),
+        updated_at: insertedCategory.updated_at || null,
       }
       set({ categories: [...categories, mappedCategory] })
 
@@ -122,14 +122,14 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
       // Update local state - mapeia para o tipo Category
       const { categories } = get()
       // Cast para any para acessar campos que podem não estar no tipo Row do Supabase
-      const categoryData = data as any
+      const updatedCategory = data as any
       const mappedData: Category = {
-        id: categoryData.id,
-        name: categoryData.name,
-        type: (categoryData.type === 'income' || categoryData.type === 'expense') ? categoryData.type : 'expense',
-        user_id: categoryData.user_id || '',
-        created_at: categoryData.created_at || new Date().toISOString(),
-        updated_at: categoryData.updated_at || null,
+        id: updatedCategory.id,
+        name: updatedCategory.name,
+        type: (updatedCategory.type === 'income' || updatedCategory.type === 'expense') ? updatedCategory.type : 'expense',
+        user_id: updatedCategory.user_id || '',
+        created_at: updatedCategory.created_at || new Date().toISOString(),
+        updated_at: updatedCategory.updated_at || null,
       }
       const updatedCategories = categories.map(category => 
         category.id === id ? mappedData : category
