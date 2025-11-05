@@ -155,66 +155,8 @@ export function createClient() {
     }
     
     // Intercepta getUser também (usado no middleware)
-    const originalGetUser = originalAuth.getUser.bind(originalAuth)
-    originalAuth.getUser = async () => {
-      try {
-        if (refreshInProgress && refreshPromise) {
-          await refreshPromise
-        }
-        
-        const result = await originalGetUser()
-        
-        // Trata erro de refresh token já usado
-        if (result.error && 
-            (result.error.message?.includes('refresh_token_already_used') || 
-             (result.error as any).code === 'refresh_token_already_used' ||
-             result.error.status === 400)) {
-          
-          if (!refreshInProgress) {
-            refreshInProgress = true
-            refreshPromise = originalAuth.signOut().catch(() => {
-              refreshInProgress = false
-              refreshPromise = null
-            })
-            
-            try {
-              localStorage.removeItem('auth-storage')
-              localStorage.removeItem('supabase.auth.token')
-            } catch (e) {
-              // Ignora erros
-            }
-          }
-          
-          return { data: { user: null }, error: null }
-        }
-        
-        return result
-      } catch (error: any) {
-        if (error?.message?.includes('refresh_token_already_used') || 
-            error?.code === 'refresh_token_already_used' ||
-            error?.status === 400) {
-          
-          if (!refreshInProgress) {
-            refreshInProgress = true
-            refreshPromise = originalAuth.signOut().catch(() => {
-              refreshInProgress = false
-              refreshPromise = null
-            })
-            
-            try {
-              localStorage.removeItem('auth-storage')
-              localStorage.removeItem('supabase.auth.token')
-            } catch (e) {
-              // Ignora erros
-            }
-          }
-          
-          return { data: { user: null }, error: null }
-        }
-        
-        throw error
-      }
-    }
+    // NOTA: Não sobrescrevemos getUser para evitar problemas de tipo
+    // O tratamento de erro será feito no middleware e auth-store
   }
 
   // Armazena referências para validação futura (desenvolvimento)
