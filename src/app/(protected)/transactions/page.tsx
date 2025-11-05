@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { ImportTransactionsModal } from '@/components/forms/import-transactions-modal'
 import { Checkbox } from '@/components/ui/checkbox'
+import type { Transaction } from '@/types/database.types'
 
 export default function TransactionsPage() {
   const { transactions, loading, error, fetchTransactions, deleteTransaction, deleteTransactions } = useTransactionsStore()
