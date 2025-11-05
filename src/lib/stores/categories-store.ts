@@ -87,13 +87,15 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
 
       // Add to local state - mapeia para o tipo Category
       const { categories } = get()
+      // Cast para any para acessar campos que podem não estar no tipo Row do Supabase
+      const categoryData = data as any
       const mappedCategory: Category = {
-        id: data.id,
-        name: data.name,
-        type: (data.type === 'income' || data.type === 'expense') ? data.type : 'expense',
-        user_id: data.user_id || '',
-        created_at: data.created_at || new Date().toISOString(),
-        updated_at: data.updated_at || null,
+        id: categoryData.id,
+        name: categoryData.name,
+        type: (categoryData.type === 'income' || categoryData.type === 'expense') ? categoryData.type : 'expense',
+        user_id: categoryData.user_id || '',
+        created_at: categoryData.created_at || new Date().toISOString(),
+        updated_at: categoryData.updated_at || null,
       }
       set({ categories: [...categories, mappedCategory] })
 
@@ -119,13 +121,15 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
 
       // Update local state - mapeia para o tipo Category
       const { categories } = get()
+      // Cast para any para acessar campos que podem não estar no tipo Row do Supabase
+      const categoryData = data as any
       const mappedData: Category = {
-        id: data.id,
-        name: data.name,
-        type: (data.type === 'income' || data.type === 'expense') ? data.type : 'expense',
-        user_id: data.user_id || '',
-        created_at: data.created_at || new Date().toISOString(),
-        updated_at: data.updated_at || null,
+        id: categoryData.id,
+        name: categoryData.name,
+        type: (categoryData.type === 'income' || categoryData.type === 'expense') ? categoryData.type : 'expense',
+        user_id: categoryData.user_id || '',
+        created_at: categoryData.created_at || new Date().toISOString(),
+        updated_at: categoryData.updated_at || null,
       }
       const updatedCategories = categories.map(category => 
         category.id === id ? mappedData : category
