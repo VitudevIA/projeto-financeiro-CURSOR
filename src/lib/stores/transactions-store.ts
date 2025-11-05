@@ -45,9 +45,30 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
     set({ loading: true, error: null })
     try {
       const supabase = createClient()
+      
+      // Obtém o user_id do usuário autenticado
+      const authState = useAuthStore.getState()
+      let userId = authState.user?.id
+      
+      if (!userId) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user) {
+          throw new Error('Usuário não autenticado')
+        }
+        userId = session.user.id
+      }
+      
+      console.log('[Transactions Store] 🔍 Buscando transações para usuário:', userId)
+      
+      // Faz JOIN com categorias para trazer o nome da categoria junto
+      // Usa a mesma sintaxe do Dashboard que sabemos que funciona
       let query = supabase
         .from('transactions')
-        .select('*')
+        .select(`
+          *,
+          category:categories(*)
+        `)
+        .eq('user_id', userId) // CRÍTICO: Filtrar por user_id
 
       if (filters?.startDate) {
         query = query.gte('transaction_date', filters.startDate)
@@ -70,26 +91,89 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
 
       const { data, error } = await query.order('transaction_date', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('[Transactions Store] ❌ Erro ao buscar transações:', error)
+        throw error
+      }
+      
+      console.log(`[Transactions Store] ✅ ${data?.length || 0} transações encontradas`)
+      
+      // Busca todas as categorias do usuário como fallback (caso o JOIN não funcione)
+      const { data: allCategories, error: categoriesError } = await supabase
+        .from('categories')
+        .select('*')
+        .eq('user_id', userId)
+        .order('name', { ascending: true })
+      
+      if (categoriesError) {
+        console.warn('[Transactions Store] ⚠️ Erro ao buscar categorias (fallback):', categoriesError)
+      }
+      
+      // Cria um mapa de categorias por ID para busca rápida
+      const categoriesMap = new Map<string, any>()
+      if (allCategories) {
+        allCategories.forEach(cat => {
+          categoriesMap.set(cat.id, cat)
+        })
+      }
+      
+      console.log(`[Transactions Store] 📚 ${categoriesMap.size} categorias carregadas para fallback`)
+      
+      // Log da primeira transação para debug
+      if (data && data.length > 0) {
+        const firstItem = data[0]
+        const categoryFromJoin = firstItem.category
+        const categoryFromMap = firstItem.category_id ? categoriesMap.get(firstItem.category_id) : null
+        
+        console.log('[Transactions Store] 📋 Primeira transação (debug):', {
+          id: firstItem.id,
+          description: firstItem.description,
+          category_id: firstItem.category_id,
+          category_from_join: categoryFromJoin,
+          category_name_from_join: categoryFromJoin?.name || 'N/A',
+          category_from_map: categoryFromMap,
+          category_name_from_map: categoryFromMap?.name || 'N/A',
+          category_full_join: JSON.stringify(categoryFromJoin),
+        })
+      }
       
       // Garante que os tipos sejam corretos conforme a interface Transaction
-      const typedTransactions: Transaction[] = (data || []).map((item: any): Transaction => ({
-        id: item.id,
-        user_id: item.user_id,
-        category_id: item.category_id,
-        amount: item.amount,
-        description: item.description,
-        transaction_date: item.transaction_date,
-        type: (item.type === 'income' || item.type === 'expense') ? item.type : 'expense',
-        payment_method: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(item.payment_method || ''))
-          ? item.payment_method as PaymentMethod
-          : 'cash',
-        created_at: item.created_at || new Date().toISOString(),
-        updated_at: item.updated_at || null,
-      }))
+      // Agora inclui a categoria no objeto (mas mantém compatibilidade com Transaction)
+      const typedTransactions: Transaction[] = (data || []).map((item: any): Transaction => {
+        const transaction: Transaction = {
+          id: item.id,
+          user_id: item.user_id,
+          category_id: item.category_id,
+          amount: item.amount,
+          description: item.description,
+          transaction_date: item.transaction_date,
+          type: (item.type === 'income' || item.type === 'expense') ? item.type : 'expense',
+          payment_method: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(item.payment_method || ''))
+            ? item.payment_method as PaymentMethod
+            : 'cash',
+          created_at: item.created_at || new Date().toISOString(),
+          updated_at: item.updated_at || null,
+        }
+        
+        // Prioridade 1: Categoria do JOIN (mais eficiente)
+        // Prioridade 2: Busca no mapa de categorias (fallback)
+        let categoryData = item.category
+        
+        // Se o JOIN não retornou categoria mas temos category_id, busca no mapa
+        if (!categoryData && item.category_id && categoriesMap.has(item.category_id)) {
+          categoryData = categoriesMap.get(item.category_id)
+          console.log(`[Transactions Store] 🔄 Fallback: Categoria encontrada no mapa para transação ${item.id}:`, categoryData?.name)
+        }
+        
+        // Adiciona categoria como propriedade extra (não tipada para manter compatibilidade)
+        ;(transaction as any).category = categoryData || null
+        
+        return transaction
+      })
       
       set({ transactions: typedTransactions })
     } catch (error) {
+      console.error('[Transactions Store] ❌ Erro:', error)
       set({ error: (error as Error).message })
     } finally {
       set({ loading: false })

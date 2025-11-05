@@ -18,9 +18,19 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
   fetchCategories: async () => {
     try {
       set({ loading: true })
+      
+      // Obtém o user_id do usuário autenticado
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) {
+        console.warn('⚠️ Nenhum usuário autenticado para buscar categorias')
+        set({ categories: [], loading: false })
+        return
+      }
+      
       const { data, error } = await supabase
         .from('categories')
         .select('*')
+        .eq('user_id', session.user.id) // CRÍTICO: Filtrar por user_id
         .order('name', { ascending: true })
 
       if (error) {
@@ -28,6 +38,7 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
         return
       }
 
+      console.log(`[Categories Store] ✅ ${data?.length || 0} categorias carregadas`)
       set({ categories: data || [], loading: false })
     } catch (error) {
       console.error('Erro inesperado ao buscar categorias:', error)

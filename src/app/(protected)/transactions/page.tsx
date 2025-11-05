@@ -32,9 +32,12 @@ export default function TransactionsPage() {
     search: ''
   })
 
+  const { fetchCategories } = useCategoriesStore()
+
   useEffect(() => {
     fetchCards()
-  }, [fetchCards])
+    fetchCategories() // Carrega categorias ao montar o componente
+  }, [fetchCards, fetchCategories])
 
   useEffect(() => {
     fetchTransactions(filters)
@@ -110,9 +113,29 @@ export default function TransactionsPage() {
   const isAllSelected = transactions.length > 0 && selectedIds.size === transactions.length
   const isIndeterminate = selectedIds.size > 0 && selectedIds.size < transactions.length
 
-  const getCategoryName = (categoryId: string) => {
-    const category = categories.find(cat => cat.id === categoryId)
-    return category?.name || 'Categoria não encontrada'
+  const getCategoryName = (transaction: Transaction & { category?: any }) => {
+    // Prioridade 1: Categoria do JOIN (vem direto do Supabase)
+    if (transaction.category?.name) {
+      return transaction.category.name
+    }
+    
+    // Prioridade 2: Buscar no store de categorias (fallback)
+    if (transaction.category_id) {
+      const category = categories.find(cat => cat.id === transaction.category_id)
+      if (category?.name) {
+        return category.name
+      }
+      
+      // Se não encontrou no store, pode ser que a categoria tenha sido deletada
+      // ou o store não foi carregado ainda
+      console.warn(`[Transactions Page] ⚠️ Categoria não encontrada no store para category_id: ${transaction.category_id}`)
+    } else {
+      // Se category_id é null, a transação não tem categoria associada
+      console.warn(`[Transactions Page] ⚠️ Transação ${transaction.id} não tem category_id`)
+    }
+    
+    // Fallback final
+    return 'Categoria não encontrada'
   }
 
   const formatCurrency = (value: number) => {
@@ -353,7 +376,7 @@ export default function TransactionsPage() {
                       {transaction.description}
                     </TableCell>
                     <TableCell>
-                      {getCategoryName(transaction.category_id)}
+                      {getCategoryName(transaction)}
                     </TableCell>
                     <TableCell>
                       {formatDate(transaction.transaction_date)}
