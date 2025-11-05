@@ -10,6 +10,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import * as XLSX from 'xlsx'
 import { extractTextFromPDF, parseCreditCardBill, ExtractedTransaction } from '@/utils/pdf-parser'
 import { recognizeCategory, recognizeCategoryLegacy, type Category } from '@/utils/category-recognition'
+import { TransactionDeduplicationService, type TransactionForDeduplication } from '@/services/transaction-deduplication-service'
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,6 +29,10 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File
     const paymentMethodFromForm = formData.get('paymentMethod') as string
     const cardIdFromForm = formData.get('cardId') as string
+    
+    // Opções de deduplicação (padrão: apenas parcela atual)
+    const importarApenasParcelaAtual = formData.get('importarApenasParcelaAtual') !== 'false'
+    const permitirDuplicatasExatas = formData.get('permitirDuplicatasExatas') === 'true'
 
     if (!file) {
       return NextResponse.json({ error: 'Nenhum arquivo fornecido' }, { status: 400 })
@@ -216,6 +221,150 @@ export async function POST(request: NextRequest) {
     if (transactions.length === 0) {
       return NextResponse.json({ error: 'Nenhuma transação encontrada no arquivo' }, { status: 400 })
     }
+
+    // ========================================
+    // DEDUPLICAÇÃO: Buscar transações existentes e filtrar duplicatas
+    // ========================================
+    console.log('[API Import] 🔍 Iniciando deduplicação de transações...')
+    
+    // Busca transações existentes do usuário (últimos 2 anos para performance)
+    const doisAnosAtras = new Date()
+    doisAnosAtras.setFullYear(doisAnosAtras.getFullYear() - 2)
+    
+    const { data: transacoesExistentesRaw, error: errorBuscarExistentes } = await supabase
+      .from('transactions')
+      .select('description, amount, transaction_date, type, installment_number, total_installments')
+      .eq('user_id', user.id)
+      .gte('transaction_date', doisAnosAtras.toISOString().split('T')[0])
+      .order('transaction_date', { ascending: false })
+
+    if (errorBuscarExistentes) {
+      console.error('[API Import] ⚠️ Erro ao buscar transações existentes:', errorBuscarExistentes)
+      // Continua sem deduplicação se houver erro
+    }
+
+    // Converte transações existentes para formato do serviço de deduplicação
+    const transacoesExistentes: TransactionForDeduplication[] = (transacoesExistentesRaw || []).map(t => ({
+      data: t.transaction_date,
+      descricao: t.description,
+      descricaoOriginal: t.description,
+      valor: parseFloat(String(t.amount)),
+      tipo: (t.type === 'income' || t.type === 'expense') ? t.type : 'expense',
+      parcelamento: (t.installment_number && t.total_installments) ? {
+        parcelaAtual: t.installment_number,
+        totalParcelas: t.total_installments
+      } : undefined
+    }))
+
+    // Converte transações extraídas para formato do serviço de deduplicação
+    const transacoesParaDeduplicacao: TransactionForDeduplication[] = transactions.map(t => {
+      const totalParcelas = t.total_parcelas ? parseInt(String(t.total_parcelas).trim()) : null
+      const parcelaAtual = t.parcela_atual ? parseInt(String(t.parcela_atual).trim()) : null
+
+      // Processa valor
+      let valorStr = String(t.valor).trim()
+      if (valorStr.includes(',') && valorStr.includes('.')) {
+        valorStr = valorStr.replace(/\./g, '').replace(',', '.')
+      } else if (valorStr.includes(',')) {
+        valorStr = valorStr.replace(',', '.')
+      }
+      const valor = parseFloat(valorStr)
+
+      return {
+        data: t.data,
+        descricao: t.descricao,
+        descricaoOriginal: t.descricao,
+        valor: valor,
+        tipo: 'expense',
+        parcelamento: (totalParcelas && totalParcelas > 1 && parcelaAtual) ? {
+          parcelaAtual: parcelaAtual,
+          totalParcelas: totalParcelas
+        } : undefined
+      }
+    })
+
+    // Aplica deduplicação
+    const deduplicationService = new TransactionDeduplicationService()
+    const resultadoDeduplicacao = await deduplicationService.filtrarDuplicatas(
+      transacoesParaDeduplicacao,
+      transacoesExistentes,
+      {
+        importarApenasParcelaAtual,
+        permitirDuplicatasExatas,
+        dataFaturaReferencia: new Date()
+      }
+    )
+
+    console.log('[API Import] 📊 Resultado da deduplicação:')
+    console.log(`  - Total analisadas: ${resultadoDeduplicacao.estatisticas.totalAnalisadas}`)
+    console.log(`  - Para importar: ${resultadoDeduplicacao.estatisticas.paraImportar}`)
+    console.log(`  - Duplicatas bloqueadas: ${resultadoDeduplicacao.estatisticas.duplicatas}`)
+    console.log(`  - Avisos: ${resultadoDeduplicacao.estatisticas.avisos}`)
+
+    // Filtra transações para processar apenas as que passaram na deduplicação
+    // Cria um mapa usando hash das transações para deduplicação como chave
+    const mapaDeduplicacao = new Map<string, number>()
+    transacoesParaDeduplicacao.forEach((t, index) => {
+      const hash = deduplicationService.gerarHashTransacao(t)
+      mapaDeduplicacao.set(hash, index)
+    })
+
+    // Filtra transações originais que passaram na deduplicação
+    const transacoesParaImportar = transactions.filter((orig, index) => {
+      // Converte transação original para formato de deduplicação
+      const totalParcelas = orig.total_parcelas ? parseInt(String(orig.total_parcelas).trim()) : null
+      const parcelaAtual = orig.parcela_atual ? parseInt(String(orig.parcela_atual).trim()) : null
+
+      // Processa valor
+      let valorStr = String(orig.valor).trim()
+      if (valorStr.includes(',') && valorStr.includes('.')) {
+        valorStr = valorStr.replace(/\./g, '').replace(',', '.')
+      } else if (valorStr.includes(',')) {
+        valorStr = valorStr.replace(',', '.')
+      }
+      const valor = parseFloat(valorStr)
+
+      const transacaoParaDedup: TransactionForDeduplication = {
+        data: orig.data,
+        descricao: orig.descricao,
+        descricaoOriginal: orig.descricao,
+        valor: valor,
+        tipo: 'expense',
+        parcelamento: (totalParcelas && totalParcelas > 1 && parcelaAtual) ? {
+          parcelaAtual: parcelaAtual,
+          totalParcelas: totalParcelas
+        } : undefined
+      }
+
+      // Verifica se está na lista de transações a importar
+      const hash = deduplicationService.gerarHashTransacao(transacaoParaDedup)
+      return resultadoDeduplicacao.paraImportar.some(t => 
+        deduplicationService.gerarHashTransacao(t) === hash
+      )
+    })
+
+    // Se não há transações para importar, retorna com informações sobre duplicatas
+    if (transacoesParaImportar.length === 0) {
+      return NextResponse.json({
+        count: 0,
+        errors: 0,
+        errorMessages: [],
+        message: 'Nenhuma transação nova para importar. Todas já existem no sistema.',
+        deduplicacao: {
+          totalAnalisadas: resultadoDeduplicacao.estatisticas.totalAnalisadas,
+          duplicatasBloqueadas: resultadoDeduplicacao.estatisticas.duplicatas,
+          duplicatas: resultadoDeduplicacao.duplicatas.map(d => ({
+            descricao: d.transacao.descricao,
+            valor: d.transacao.valor,
+            data: d.transacao.data,
+            motivo: d.motivo
+          }))
+        }
+      }, { status: 200 })
+    }
+
+    // Atualiza a lista de transações para processar apenas as não-duplicadas
+    transactions = transacoesParaImportar
 
     // Processa e insere transações
     let successCount = 0
@@ -623,6 +772,27 @@ export async function POST(request: NextRequest) {
         errors: errorCount,
         errorMessages: errors.slice(0, 10), // Limita a 10 erros
         message: `${successCount} transação(ões) importada(s) com sucesso${errorCount > 0 ? `, ${errorCount} erro(s)` : ''}`,
+        deduplicacao: {
+          totalAnalisadas: resultadoDeduplicacao.estatisticas.totalAnalisadas,
+          novasTransacoes: successCount,
+          duplicatasBloqueadas: resultadoDeduplicacao.estatisticas.duplicatas,
+          avisos: resultadoDeduplicacao.estatisticas.avisos,
+          duplicatas: resultadoDeduplicacao.duplicatas.map(d => ({
+            descricao: d.transacao.descricao,
+            valor: d.transacao.valor,
+            data: d.transacao.data,
+            motivo: d.motivo
+          })),
+          avisosDetalhados: resultadoDeduplicacao.avisos.map(a => ({
+            tipo: a.tipo,
+            mensagem: a.mensagem,
+            transacao: {
+              descricao: a.transacao.descricao,
+              valor: a.transacao.valor,
+              data: a.transacao.data
+            }
+          }))
+        }
       },
       { status: 200 }
     )

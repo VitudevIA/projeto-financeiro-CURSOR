@@ -137,7 +137,24 @@ export function ImportTransactionsModal({
         throw new Error(data.error || 'Erro ao importar transações')
       }
 
-      toast.success(`${data.count || 0} despesa(s) importada(s) com sucesso!`)
+      // Mostra mensagem de sucesso com informações de deduplicação
+      if (data.deduplicacao) {
+        const { novasTransacoes, duplicatasBloqueadas, totalAnalisadas } = data.deduplicacao
+        
+        if (duplicatasBloqueadas > 0) {
+          toast.success(
+            `${novasTransacoes || data.count || 0} transação(ões) importada(s) | ${duplicatasBloqueadas} duplicata(s) bloqueada(s)`,
+            {
+              description: `Total analisado: ${totalAnalisadas} transações`,
+              duration: 5000
+            }
+          )
+        } else {
+          toast.success(`${novasTransacoes || data.count || 0} despesa(s) importada(s) com sucesso!`)
+        }
+      } else {
+        toast.success(`${data.count || 0} despesa(s) importada(s) com sucesso!`)
+      }
       
       // Limpa campos e input
       if (fileInputRef.current) {
