@@ -54,7 +54,18 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
       if (data && data.length > 0) {
         console.log('[Categories Store] 📋 Categorias:', data.map(c => ({ id: c.id, name: c.name, type: c.type })))
       }
-      set({ categories: data || [], loading: false })
+      
+      // Mapeia os dados do Supabase para o tipo Category, garantindo que updated_at seja incluído
+      const mappedCategories: Category[] = (data || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        type: (c.type === 'income' || c.type === 'expense') ? c.type : 'expense',
+        user_id: c.user_id || '',
+        created_at: c.created_at || new Date().toISOString(),
+        updated_at: c.updated_at || null,
+      }))
+      
+      set({ categories: mappedCategories, loading: false })
     } catch (error) {
       console.error('[Categories Store] ❌ Erro inesperado ao buscar categorias:', error)
       set({ categories: [], loading: false })
@@ -74,9 +85,17 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
         return { error: error.message }
       }
 
-      // Add to local state
+      // Add to local state - mapeia para o tipo Category
       const { categories } = get()
-      set({ categories: [...categories, data] })
+      const mappedCategory: Category = {
+        id: data.id,
+        name: data.name,
+        type: (data.type === 'income' || data.type === 'expense') ? data.type : 'expense',
+        user_id: data.user_id || '',
+        created_at: data.created_at || new Date().toISOString(),
+        updated_at: data.updated_at || null,
+      }
+      set({ categories: [...categories, mappedCategory] })
 
       return { error: null }
     } catch (error) {
@@ -98,10 +117,18 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
         return { error: error.message }
       }
 
-      // Update local state
+      // Update local state - mapeia para o tipo Category
       const { categories } = get()
+      const mappedData: Category = {
+        id: data.id,
+        name: data.name,
+        type: (data.type === 'income' || data.type === 'expense') ? data.type : 'expense',
+        user_id: data.user_id || '',
+        created_at: data.created_at || new Date().toISOString(),
+        updated_at: data.updated_at || null,
+      }
       const updatedCategories = categories.map(category => 
-        category.id === id ? { ...category, ...data } : category
+        category.id === id ? mappedData : category
       )
       set({ categories: updatedCategories })
 
