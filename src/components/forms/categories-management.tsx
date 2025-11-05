@@ -5,8 +5,9 @@ import { useCategoriesStore } from '@/lib/stores/categories-store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { createClient } from '@/lib/supabase/client'
 
 interface CategoriesManagementProps {
   isOpen: boolean
@@ -26,7 +27,7 @@ export default function CategoriesManagement({
   onClose, 
   editingCategory 
 }: CategoriesManagementProps) {
-  const { addCategory, updateCategory } = useCategoriesStore()
+  const { addCategory, updateCategory, fetchCategories } = useCategoriesStore()
   const [formData, setFormData] = useState<CategoryFormData>({
     name: '',
     icon: null,
@@ -55,47 +56,55 @@ export default function CategoriesManagement({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.name) {
+    if (!formData.name.trim()) {
       toast.error('Nome da categoria é obrigatório')
       return
     }
 
     try {
-      // Obter user_id do localStorage ou usar um valor padrão temporário
-      const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null
-      const user = userData ? JSON.parse(userData) : null
+      // Obter user_id da sessão do Supabase
+      const supabase = createClient()
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session?.user) {
+        console.error('[Categories Management] ❌ Erro ao obter sessão:', sessionError)
+        toast.error('Erro ao obter informações do usuário. Por favor, faça login novamente.')
+        return
+      }
       
       const categoryData = {
-        name: formData.name,
+        name: formData.name.trim(),
         icon: formData.icon || null,
         color: formData.color,
         is_system: false,
-        user_id: user?.id || 'default-user-id', // Valor temporário
-        type: formData.type || 'expense',
-        updated_at: null
+        user_id: session.user.id,
+        type: formData.type || 'expense'
       }
 
       if (editingCategory) {
         // Atualizar categoria existente
-        try {
-          await updateCategory(editingCategory.id, categoryData)
-          toast.success('Categoria atualizada com sucesso!')
-          onClose()
-        } catch (error) {
-          toast.error((error as Error).message)
+        const { error } = await updateCategory(editingCategory.id, categoryData)
+        if (error) {
+          console.error('[Categories Management] ❌ Erro ao atualizar categoria:', error)
+          toast.error(`Erro ao atualizar categoria: ${error}`)
+          return
         }
+        toast.success('Categoria atualizada com sucesso!')
+        onClose() // handleCloseCategoryDialog já chama fetchCategories()
       } else {
         // Criar nova categoria
-        try {
-          await addCategory(categoryData as any)
-          toast.success('Categoria criada com sucesso!')
-          onClose()
-        } catch (error) {
-          toast.error((error as Error).message)
+        const { error } = await addCategory(categoryData as any)
+        if (error) {
+          console.error('[Categories Management] ❌ Erro ao criar categoria:', error)
+          toast.error(`Erro ao criar categoria: ${error}`)
+          return
         }
+        toast.success('Categoria criada com sucesso!')
+        onClose() // handleCloseCategoryDialog já chama fetchCategories()
       }
     } catch (error) {
-      toast.error((error as Error).message)
+      console.error('[Categories Management] ❌ Erro inesperado:', error)
+      toast.error(`Erro inesperado: ${(error as Error).message}`)
     }
   }
 
@@ -113,6 +122,11 @@ export default function CategoriesManagement({
           <DialogTitle>
             {editingCategory ? 'Editar Categoria' : 'Nova Categoria'}
           </DialogTitle>
+          <DialogDescription>
+            {editingCategory 
+              ? 'Edite as informações da categoria abaixo.' 
+              : 'Preencha os campos para criar uma nova categoria de transação.'}
+          </DialogDescription>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">

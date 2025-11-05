@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 import type { Category } from '@/types/database.types'
 
 interface CategoriesState {
@@ -19,13 +19,24 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
     try {
       set({ loading: true })
       
+      const supabase = createClient()
+      
       // Obtém o user_id do usuário autenticado
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) {
-        console.warn('⚠️ Nenhum usuário autenticado para buscar categorias')
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) {
+        console.error('[Categories Store] ❌ Erro ao obter sessão:', sessionError)
         set({ categories: [], loading: false })
         return
       }
+      
+      if (!session?.user) {
+        console.warn('[Categories Store] ⚠️ Nenhum usuário autenticado para buscar categorias')
+        set({ categories: [], loading: false })
+        return
+      }
+      
+      console.log('[Categories Store] 🔍 Buscando categorias para usuário:', session.user.id)
       
       const { data, error } = await supabase
         .from('categories')
@@ -34,20 +45,25 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
         .order('name', { ascending: true })
 
       if (error) {
-        console.error('Erro ao buscar categorias:', error)
+        console.error('[Categories Store] ❌ Erro ao buscar categorias:', error)
+        set({ categories: [], loading: false })
         return
       }
 
       console.log(`[Categories Store] ✅ ${data?.length || 0} categorias carregadas`)
+      if (data && data.length > 0) {
+        console.log('[Categories Store] 📋 Categorias:', data.map(c => ({ id: c.id, name: c.name, type: c.type })))
+      }
       set({ categories: data || [], loading: false })
     } catch (error) {
-      console.error('Erro inesperado ao buscar categorias:', error)
-      set({ loading: false })
+      console.error('[Categories Store] ❌ Erro inesperado ao buscar categorias:', error)
+      set({ categories: [], loading: false })
     }
   },
 
   addCategory: async (categoryData) => {
     try {
+      const supabase = createClient()
       const { data, error } = await supabase
         .from('categories')
         .insert([categoryData])
@@ -70,6 +86,7 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
 
   updateCategory: async (id, updates) => {
     try {
+      const supabase = createClient()
       const { data, error } = await supabase
         .from('categories')
         .update(updates)
@@ -96,6 +113,7 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
 
   deleteCategory: async (id) => {
     try {
+      const supabase = createClient()
       const { error } = await supabase
         .from('categories')
         .delete()
