@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,11 +15,44 @@ import BarChartComponent from '@/components/charts/bar-chart'
 import InsightsCard from '@/components/insights/insights-card'
 import { useUserDataSync } from '@/hooks/useUserDataSync'
 import { cn } from '@/lib/utils'
+import { DashboardFilters, type DashboardFilters as DashboardFiltersType } from '@/components/dashboard/dashboard-filters-v2'
+import { ComparisonChart } from '@/components/dashboard/comparison-chart'
+
+// Função auxiliar para formatar descrição do período
+const getPeriodDescription = (filters: DashboardFiltersType): string => {
+  if (filters.periodPreset === 'current-month') return 'Este mês'
+  if (filters.periodPreset === 'last-month') return 'Mês anterior'
+  if (filters.periodPreset === 'last-quarter') return 'Último trimestre'
+  if (filters.periodPreset === 'last-year') return 'Ano anterior'
+  if (filters.periodPreset === 'compare') return 'Período atual'
+  if (filters.periodPreset === 'custom') {
+    const start = new Date(filters.startDate)
+    const end = new Date(filters.endDate)
+    return `${start.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} - ${end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}`
+  }
+  return 'Período selecionado'
+}
 
 export default function DashboardPage() {
   const { user, signOut } = useAuthStore()
-  const { kpis, timeSeriesData, categoryData, topTransactions, loading, fetchDashboardData } = useDashboardStore()
+  const { kpis, timeSeriesData, categoryData, topTransactions, recentTransactions, totalTransactions, comparisonData, loading, fetchDashboardData } = useDashboardStore()
   const router = useRouter()
+  
+  // Estado dos filtros
+  const [filters, setFilters] = useState<DashboardFiltersType>(() => {
+    const now = new Date()
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    
+    return {
+      startDate: currentMonthStart.toISOString().split('T')[0],
+      endDate: currentMonthEnd.toISOString().split('T')[0],
+      categoryId: null,
+      cardId: null,
+      periodPreset: 'current-month',
+      compareMode: false,
+    }
+  })
 
   useUserDataSync()
   // Proteção de rota
@@ -35,11 +68,12 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
+  // Busca dados quando usuário ou filtros mudarem
   useEffect(() => {
-  if (user) {
-    fetchDashboardData(user) // ✅ AGORA SEM 'as any'
-  }
-}, [fetchDashboardData, user])
+    if (user) {
+      fetchDashboardData(user, filters)
+    }
+  }, [fetchDashboardData, user, filters])
 
   // Loading se não tem user
   if (!user) {
@@ -80,7 +114,7 @@ export default function DashboardPage() {
       title: 'Total Gasto',
       value: formatCurrency(kpis.totalSpent),
       icon: DollarSign,
-      description: 'Este mês',
+      description: filters.periodPreset === 'compare' ? 'Período atual' : getPeriodDescription(filters),
       color: 'text-red-600',
     },
     {
@@ -148,6 +182,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Filtros Multidimensionais */}
+      <DashboardFilters 
+        filters={filters} 
+        onFiltersChange={setFilters}
+        transactionCount={totalTransactions}
+      />
+
+      {/* Comparação de Períodos */}
+      {comparisonData && filters.compareMode && (
+        <ComparisonChart 
+          comparisonData={comparisonData}
+          filters={filters}
+        />
+      )}
+
       {/* KPIs Grid Moderno */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
         {kpiCards.map((kpi, index) => {
@@ -210,7 +259,7 @@ export default function DashboardPage() {
               <div>
                 <CardTitle className="text-lg">Evolução dos Gastos</CardTitle>
                 <CardDescription className="mt-1">
-                  Gastos diários do mês atual
+                  Gastos diários {getPeriodDescription(filters).toLowerCase()}
                 </CardDescription>
               </div>
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -237,7 +286,7 @@ export default function DashboardPage() {
               <div>
                 <CardTitle className="text-lg">Distribuição por Categoria</CardTitle>
                 <CardDescription className="mt-1">
-                  Gastos por categoria no mês
+                  Gastos por categoria {getPeriodDescription(filters).toLowerCase()}
                 </CardDescription>
               </div>
               <div className="h-10 w-10 rounded-lg bg-accent/10 flex items-center justify-center">
@@ -352,26 +401,66 @@ export default function DashboardPage() {
             <div>
               <CardTitle className="text-lg">Transações Recentes</CardTitle>
               <CardDescription className="mt-1">
-                Últimas transações registradas
+                Últimas transações do período filtrado
               </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          {recentTransactions.length > 0 ? (
+            <div className="space-y-2">
+              {recentTransactions.map((transaction) => (
+                <div 
+                  key={transaction.id} 
+                  className="flex items-center justify-between p-4 border border-border/50 rounded-xl hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="w-2 h-2 rounded-full bg-primary" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-foreground truncate">{transaction.description}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                        <span>{transaction.category?.name || 'Sem categoria'}</span>
+                        {transaction.card && (
+                          <>
+                            <span>•</span>
+                            <span>{transaction.card.name}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-4">
+                    <p className={cn(
+                      "font-bold",
+                      transaction.type === 'expense' ? "text-destructive" : "text-green-600"
+                    )}>
+                      {transaction.type === 'expense' ? '-' : '+'}{formatCurrency(Math.abs(transaction.amount))}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(transaction.transaction_date).toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                      })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
             <div className="text-center py-12">
               <Receipt className="h-16 w-16 text-muted-foreground/30 mx-auto mb-4" />
               <p className="text-muted-foreground mb-2">
-                Nenhuma transação encontrada.
+                Nenhuma transação encontrada no período filtrado.
               </p>
               <Link href="/transactions/new">
                 <Button variant="outline" className="mt-2 border-primary/20 hover:bg-primary/5">
                   <Plus className="mr-2 h-4 w-4" />
-                  Adicione sua primeira transação
+                  Adicionar transação
                 </Button>
               </Link>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

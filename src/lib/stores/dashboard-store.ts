@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
 import type { AppUser } from '@/types/user_types'
+import type { DashboardFilters } from '@/components/dashboard/dashboard-filters'
 
 // Defina os tipos localmente
 interface DashboardKPIs {
@@ -24,14 +25,30 @@ interface ChartData {
   color: string
 }
 
+interface ComparisonData {
+  currentPeriod: {
+    kpis: DashboardKPIs
+    timeSeriesData: TimeSeriesData[]
+    categoryData: ChartData[]
+  }
+  comparePeriod: {
+    kpis: DashboardKPIs
+    timeSeriesData: TimeSeriesData[]
+    categoryData: ChartData[]
+  }
+}
+
 interface DashboardState {
   kpis: DashboardKPIs | null
   timeSeriesData: TimeSeriesData[]
   categoryData: ChartData[]
   topTransactions: any[]
+  recentTransactions: any[]
+  totalTransactions: number
+  comparisonData: ComparisonData | null
   loading: boolean
   error: string | null
-  fetchDashboardData: (user: AppUser | null, startDate?: string, endDate?: string) => Promise<void> // ✅ MUDE O TIPO
+  fetchDashboardData: (user: AppUser | null, filters?: DashboardFilters) => Promise<void>
   clearError: () => void
 }
 
@@ -63,10 +80,13 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   timeSeriesData: [],
   categoryData: [],
   topTransactions: [],
+  recentTransactions: [],
+  totalTransactions: 0,
+  comparisonData: null,
   loading: false,
   error: null,
 
-  fetchDashboardData: async (user, startDate, endDate) => {
+  fetchDashboardData: async (user, filters) => {
     try {
       set({ loading: true, error: null })
 
@@ -82,14 +102,21 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
       const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
       
-      const start = startDate || currentMonthStart.toISOString().split('T')[0]
-      const end = endDate || currentMonthEnd.toISOString().split('T')[0]
+      // Usa os filtros fornecidos ou valores padrão
+      const start = filters?.startDate || currentMonthStart.toISOString().split('T')[0]
+      const end = filters?.endDate || currentMonthEnd.toISOString().split('T')[0]
+      const categoryId = filters?.categoryId
+      const cardId = filters?.cardId
+      const compareMode = filters?.compareMode || false
 
       console.log(`📅 Período: ${start} até ${end}`)
+      if (categoryId) console.log(`🏷️ Categoria filtrada: ${categoryId}`)
+      if (cardId) console.log(`💳 Cartão filtrado: ${cardId}`)
+      if (compareMode) console.log(`📊 Modo comparação ativado`)
 
       // Fetch transactions para o período
       const supabase = createClient()
-      const { data: transactions, error: transactionsError } = await supabase
+      let query = supabase
         .from('transactions')
         .select(`
           *,
@@ -99,6 +126,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         .eq('user_id', user.id)
         .gte('transaction_date', start)
         .lte('transaction_date', end)
+      
+      // Aplica filtros adicionais
+      if (categoryId) {
+        query = query.eq('category_id', categoryId)
+      }
+      
+      if (cardId) {
+        query = query.eq('card_id', cardId)
+      }
+      
+      const { data: transactions, error: transactionsError } = await query
         .order('transaction_date', { ascending: true })
       
       console.log(`📊 Dashboard: ${transactions?.length || 0} transações encontradas no período ${start} até ${end}`)
@@ -249,6 +287,151 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           }
         }) || []
 
+      // Pegar transações recentes (últimas 10, ordenadas por data decrescente)
+      const recentTransactions = transactions
+        ?.filter((t: any) => {
+          const amount = ensureNumber(t.amount)
+          return amount && Math.abs(amount) > 0
+        })
+        .sort((a: any, b: any) => {
+          const dateA = new Date(a.transaction_date).getTime()
+          const dateB = new Date(b.transaction_date).getTime()
+          return dateB - dateA // Mais recentes primeiro
+        })
+        .slice(0, 10)
+        .map((transaction: any) => {
+          const amount = ensureNumber(transaction.amount)
+          return {
+            ...transaction,
+            amount: Number(amount.toFixed(2))
+          }
+        }) || []
+
+      // Se estiver em modo de comparação, busca dados do período comparado
+      let comparisonData: ComparisonData | null = null
+      
+      if (compareMode && filters?.compareStartDate && filters?.compareEndDate) {
+        console.log(`📊 Buscando dados de comparação: ${filters.compareStartDate} até ${filters.compareEndDate}`)
+        
+        let compareQuery = supabase
+          .from('transactions')
+          .select(`
+            *,
+            category:categories(*),
+            card:cards(*)
+          `)
+          .eq('user_id', user.id)
+          .gte('transaction_date', filters.compareStartDate)
+          .lte('transaction_date', filters.compareEndDate)
+        
+        if (categoryId) {
+          compareQuery = compareQuery.eq('category_id', categoryId)
+        }
+        
+        if (cardId) {
+          compareQuery = compareQuery.eq('card_id', cardId)
+        }
+        
+        const { data: compareTransactions, error: compareError } = await compareQuery
+          .order('transaction_date', { ascending: true })
+        
+        if (!compareError && compareTransactions) {
+          // Calcula KPIs do período comparado
+          let compareTotalIncome = 0
+          let compareTotalSpent = 0
+          
+          compareTransactions.forEach((transaction: any) => {
+            const amount = ensureNumber(transaction.amount)
+            if (transaction.type === 'income') {
+              compareTotalIncome += amount
+            } else if (transaction.type === 'expense') {
+              compareTotalSpent += amount
+            }
+          })
+          
+          const compareAvailableBalance = compareTotalIncome - compareTotalSpent
+          const compareStartDateObj = new Date(filters.compareStartDate)
+          const compareEndDateObj = new Date(filters.compareEndDate)
+          const compareDaysInPeriod = Math.ceil((compareEndDateObj.getTime() - compareStartDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1
+          const compareDaysPassed = Math.min(
+            Math.ceil((now.getTime() - compareStartDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+            compareDaysInPeriod
+          )
+          
+          const compareDailyAverage = compareDaysPassed > 0 ? compareTotalSpent / compareDaysPassed : 0
+          const compareMonthlyProjection = compareDailyAverage * compareDaysInPeriod
+          
+          const compareKpis: DashboardKPIs = {
+            totalSpent: compareTotalSpent,
+            dailyAverage: Number(compareDailyAverage.toFixed(2)),
+            monthlyProjection: Number(compareMonthlyProjection.toFixed(2)),
+            budgetUsedPercentage: 0, // Não calculamos para comparação
+            availableBalance: Number(compareAvailableBalance.toFixed(2)),
+            daysOfReserve: compareDailyAverage > 0 ? Math.floor(compareAvailableBalance / compareDailyAverage) : 0,
+          }
+          
+          // Time series do período comparado
+          const compareTimeSeriesMap = new Map<string, number>()
+          const compareCurrentDate = new Date(compareStartDateObj)
+          while (compareCurrentDate <= compareEndDateObj) {
+            const dateStr = compareCurrentDate.toISOString().split('T')[0]
+            compareTimeSeriesMap.set(dateStr, 0)
+            compareCurrentDate.setDate(compareCurrentDate.getDate() + 1)
+          }
+          
+          compareTransactions.forEach((transaction: any) => {
+            if (transaction.type === 'expense') {
+              const amount = ensureNumber(transaction.amount)
+              const date = transaction.transaction_date
+              if (date) {
+                const current = compareTimeSeriesMap.get(date) || 0
+                compareTimeSeriesMap.set(date, current + amount)
+              }
+            }
+          })
+          
+          const compareTimeSeriesData: TimeSeriesData[] = Array.from(compareTimeSeriesMap.entries())
+            .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+            .map(([date, amount]) => ({
+              date,
+              amount: Number(amount.toFixed(2)),
+              label: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+            }))
+          
+          // Categorias do período comparado
+          const compareCategoryMap = new Map<string, number>()
+          compareTransactions.forEach((transaction: any) => {
+            if (transaction.type === 'expense') {
+              const amount = ensureNumber(transaction.amount)
+              const categoryName = transaction.category?.name || 'Sem Categoria'
+              const current = compareCategoryMap.get(categoryName) || 0
+              compareCategoryMap.set(categoryName, current + amount)
+            }
+          })
+          
+          const compareCategoryData: ChartData[] = Array.from(compareCategoryMap.entries())
+            .map(([name, value], index) => ({
+              name,
+              value: Number(value.toFixed(2)),
+              color: getCategoryColor(index)
+            }))
+            .sort((a, b) => b.value - a.value)
+          
+          comparisonData = {
+            currentPeriod: {
+              kpis,
+              timeSeriesData,
+              categoryData,
+            },
+            comparePeriod: {
+              kpis: compareKpis,
+              timeSeriesData: compareTimeSeriesData,
+              categoryData: compareCategoryData,
+            },
+          }
+        }
+      }
+
       console.log('✅ Dashboard: Dados carregados com sucesso')
       console.log(`📈 KPIs: ${transactions?.length || 0} transações processadas`)
       console.log(`💰 Receitas: R$ ${totalIncome.toFixed(2)} | Despesas: R$ ${totalSpent.toFixed(2)} | Saldo: R$ ${availableBalance.toFixed(2)}`)
@@ -258,6 +441,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         timeSeriesData,
         categoryData,
         topTransactions,
+        recentTransactions,
+        totalTransactions: transactions?.length || 0,
+        comparisonData,
         loading: false,
         error: null
       })

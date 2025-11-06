@@ -113,22 +113,55 @@ export async function middleware(request: NextRequest) {
         error: authError,
       } = await supabase.auth.getUser()
       
-      // Trata especificamente o erro de refresh token já usado
-      if (authError && 
-          (authError.message?.includes('refresh_token_already_used') || 
-           (authError as any).code === 'refresh_token_already_used')) {
-        // Não redireciona imediatamente - deixa o cliente tratar
-        // Apenas loga o erro silenciosamente
-        console.warn('Middleware: Refresh token já usado, será tratado no cliente')
-        user = null
+      // Trata erros de refresh token (já usado ou não encontrado)
+      if (authError) {
+        const errorCode = (authError as any).code || ''
+        const errorMessage = authError.message || ''
+        
+        // Refresh token já usado ou não encontrado - limpa sessão silenciosamente
+        const isRefreshTokenError = 
+          errorCode === 'refresh_token_already_used' || 
+          errorCode === 'refresh_token_not_found' ||
+          errorMessage.includes('refresh_token_already_used') ||
+          errorMessage.includes('refresh_token_not_found') ||
+          errorMessage.includes('Invalid Refresh Token')
+        
+        if (isRefreshTokenError) {
+          // Limpa cookies de autenticação fazendo signOut silencioso
+          try {
+            await supabase.auth.signOut()
+          } catch (signOutError) {
+            // Ignora erros ao fazer signOut (pode ser que já não haja sessão)
+          }
+          
+          user = null
+        } else {
+          // Outros erros de autenticação - também considera não autenticado
+          user = null
+        }
       } else {
         user = authUser
       }
     } catch (error: any) {
-      // Trata erros de refresh token
-      if (error?.message?.includes('refresh_token_already_used') || 
-          error?.code === 'refresh_token_already_used') {
-        console.warn('Middleware: Refresh token já usado (catch), será tratado no cliente')
+      // Trata erros de refresh token no catch
+      const errorCode = error?.code || ''
+      const errorMessage = error?.message || ''
+      
+      const isRefreshTokenError = 
+        errorCode === 'refresh_token_already_used' || 
+        errorCode === 'refresh_token_not_found' ||
+        errorMessage.includes('refresh_token_already_used') ||
+        errorMessage.includes('refresh_token_not_found') ||
+        errorMessage.includes('Invalid Refresh Token')
+      
+      if (isRefreshTokenError) {
+        // Limpa cookies de autenticação fazendo signOut silencioso
+        try {
+          await supabase.auth.signOut()
+        } catch (signOutError) {
+          // Ignora erros ao fazer signOut
+        }
+        
         user = null
       } else {
         // Re-lança outros erros
