@@ -241,9 +241,3 @@ export default function CardsPage() {
     </div>
   )
 }
-// Edit Dialog
-// Using Dialog mounted at page level
-// Ensures it overlays on top of cards grid
-export function CardsEditDialogWrapper() {
-  return null
-}
