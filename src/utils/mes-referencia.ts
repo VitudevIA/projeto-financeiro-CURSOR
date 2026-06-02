@@ -99,6 +99,78 @@ export function effectiveMesReferencia(
   return inferMesReferencia(transaction.transaction_date, 'credit')
 }
 
+/** Soma meses a um YYYY-MM (ex: 2026-06 + 1 → 2026-07) */
+export function addMonthsToMesReferencia(
+  mesRef: MesReferencia,
+  monthsToAdd: number
+): MesReferencia {
+  if (!isValidMesReferencia(mesRef)) return mesRef
+  const [y, m] = mesRef.split('-').map(Number)
+  const date = new Date(y, m - 1 + monthsToAdd, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+/**
+ * Competência na importação:
+ * - parcelas: mês do modal + (parcela - 1) meses
+ * - demais: coluna explícita, mês do modal ou inferência pela data
+ */
+export function resolveMesReferenciaForImport(params: {
+  transactionDate: string
+  paymentMethod: string
+  explicit?: string | null
+  defaultFromImport?: string | null
+  installmentNumber?: number | null
+  totalInstallments?: number | null
+}): MesReferencia {
+  const {
+    transactionDate,
+    paymentMethod,
+    explicit,
+    defaultFromImport,
+    installmentNumber,
+    totalInstallments,
+  } = params
+
+  const isInstallment =
+    totalInstallments != null &&
+    totalInstallments > 1 &&
+    installmentNumber != null &&
+    installmentNumber >= 1
+
+  if (
+    isInstallment &&
+    defaultFromImport &&
+    isValidMesReferencia(defaultFromImport)
+  ) {
+    return addMonthsToMesReferencia(defaultFromImport, installmentNumber - 1)
+  }
+
+  return resolveMesReferenciaFromParams(
+    transactionDate,
+    paymentMethod,
+    explicit,
+    defaultFromImport
+  )
+}
+
+function resolveMesReferenciaFromParams(
+  transactionDate: string,
+  paymentMethod: string,
+  explicit?: string | null,
+  defaultFromImport?: string | null
+): MesReferencia {
+  const trimmed = explicit != null ? String(explicit).trim() : ''
+  if (trimmed && isValidMesReferencia(trimmed)) {
+    return trimmed
+  }
+  const defaultTrimmed = defaultFromImport != null ? String(defaultFromImport).trim() : ''
+  if (defaultTrimmed && isValidMesReferencia(defaultTrimmed)) {
+    return defaultTrimmed
+  }
+  return inferMesReferencia(transactionDate, paymentMethod)
+}
+
 /** Intervalo de transaction_date para capturar compras na competência do período */
 export function expandedTransactionDateRangeForMesReferencias(
   min: MesReferencia,

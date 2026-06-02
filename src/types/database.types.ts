@@ -78,6 +78,10 @@ export interface User {
 // Tipos para joins e relações
 export interface BudgetWithCategory extends Budget {
   categories: Category
+  /** Consumo real no mês de competência selecionado (soma de despesas) */
+  spent_amount?: number
+  /** Percentual do limite já utilizado (0–100+) */
+  usage_percentage?: number
 }
 
 export interface TransactionWithCategory extends Transaction {

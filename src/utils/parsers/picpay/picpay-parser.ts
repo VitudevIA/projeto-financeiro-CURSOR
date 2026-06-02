@@ -5,6 +5,36 @@
 
 import { BaseBankStatementParser, ExtractedTransaction } from '../base-parser-interface'
 
+/** Remove cabeçalhos/rodapés de página e normaliza quebras antes do parse */
+export function preprocessPicPayBillText(text: string): string {
+  const linhas = text
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+
+  const limpas = linhas.filter((linha) => {
+    const lower = linha.toLowerCase()
+
+    if (/^p[aá]gina\s+\d+\s*(?:de|\/)\s*\d+/i.test(lower)) return false
+    if (/^picpay\s*$/i.test(lower)) return false
+    if (/^mastercard\s*[®]?\s*black/i.test(lower) && !/^\d{2}\/\d{2}/.test(linha)) return false
+    if (/^vencimento\s*:/i.test(lower) && !/^\d{2}\/\d{2}/.test(linha)) return false
+    if (/^limite\s+(total|dispon[ií]vel)/i.test(lower)) return false
+    if (/^saldo\s+anterior/i.test(lower)) return false
+    if (/^www\.picpay\.com/i.test(lower)) return false
+    if (/^central\s+de\s+atendimento/i.test(lower)) return false
+    if (/^ouvidoria/i.test(lower)) return false
+    if (/^sac\s/i.test(lower)) return false
+    if (/^\d{3,4}\s+\d{4}\s+\d{4}$/.test(linha)) return false
+
+    return true
+  })
+
+  return limpas.join('\n')
+}
+
 export class PicPayParser extends BaseBankStatementParser {
   readonly bankId = 'picpay'
   readonly bankName = 'PicPay'
@@ -45,52 +75,20 @@ export class PicPayParser extends BaseBankStatementParser {
       return transactions
     }
 
-    const linhas = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+    const textoPreparado = preprocessPicPayBillText(text)
+    const linhas = textoPreparado.split('\n').map(l => l.trim()).filter(l => l.length > 0)
     
     // Extrai ano do texto
-    const yearMatch = text.match(/\b(20\d{2})\b/)
+    const yearMatch = textoPreparado.match(/\b(20\d{2})\b/)
     const currentYear = yearMatch ? parseInt(yearMatch[1]) : new Date().getFullYear()
 
-    // Procura pela seção de transações
-    // Padrões comuns: "Transações nacionais", "Despesas do mês", etc.
-    let indiceInicio = -1
-    for (let i = 0; i < linhas.length; i++) {
-      const linhaLower = linhas[i].toLowerCase()
-      if (linhaLower.includes('transações nacionais') || 
-          linhaLower.includes('despesas do mês') ||
-          (linhaLower.includes('data') && linhaLower.includes('estabelecimento'))) {
-        indiceInicio = i + 1
-        console.log(`[${this.bankName} Parser] Seção de transações encontrada na linha ${i}`)
-        break
-      }
-    }
+    // Processa TODAS as linhas (múltiplos blocos: Picpay Card, final 9024, final 9032, etc.)
+    const linhasProcessar = linhas
+    console.log(`[${this.bankName} Parser] Processando ${linhasProcessar.length} linhas (documento completo)`)
 
-    // Se não encontrou seção específica, procura por linhas que começam com data
-    if (indiceInicio === -1) {
-      for (let i = 0; i < linhas.length; i++) {
-        if (/^\d{2}\/\d{2}/.test(linhas[i]) && !this.deveIgnorarLinha(linhas[i])) {
-          indiceInicio = i
-          console.log(`[${this.bankName} Parser] Primeira transação encontrada na linha ${i}`)
-          break
-        }
-      }
-    }
+    // Padrão 0: DD/MM | Descrição | Valor (com pipes)
+    const padraoComPipe = /^(\d{2}\/\d{2})\s*\|\s*(.+?)\s*\|\s*([-]?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/
 
-    // Se ainda não encontrou, usa todas as linhas
-    if (indiceInicio === -1) {
-      indiceInicio = 0
-    }
-
-    const linhasProcessar = indiceInicio > 0 ? linhas.slice(indiceInicio) : linhas
-    console.log(`[${this.bankName} Parser] Processando ${linhasProcessar.length} linhas`)
-
-    // Padrões mais flexíveis para PicPay
-    // CRÍTICO: Precisa capturar corretamente quando descrição e valor estão grudados
-    // Exemplo: "28/10SHEIN *SHU FEPARC01/0267,90" deve ser:
-    //   - Data: "28/10"
-    //   - Descrição: "SHEIN *SHU FEPARC01/02"
-    //   - Valor: "67,90"
-    
     // Padrão 1: DD/MM DESCRIÇÃO VALOR (formato tradicional, com espaços)
     const padraoPrincipal = /^(\d{2}\/\d{2})\s+(.+?)\s+([-]?\d{1,3}(?:\.\d{3})*,\d{2})\s*$/
     
@@ -122,13 +120,18 @@ export class PicPayParser extends BaseBankStatementParser {
       let descricao: string = ''
       let valorStr: string = ''
 
-      // PRIORIDADE 1: Tenta padrão especial com PARC grudado com valor
-      // Exemplo: "28/10SHEIN *SHU FEPARC01/0267,90" deve ser:
-      //   - Data: "28/10"
-      //   - Descrição: "SHEIN *SHU FEPARC01/02"
-      //   - Valor: "67,90"
-      match = linha.match(padraoComParcGrudado)
+      // PRIORIDADE 0: formato com pipes (DD/MM | Descrição | Valor)
+      match = linha.match(padraoComPipe)
       if (match) {
+        dataStr = match[1]
+        descricao = match[2].trim()
+        valorStr = match[3]
+      }
+
+      // PRIORIDADE 1: Tenta padrão especial com PARC grudado com valor
+      if (!match) {
+        match = linha.match(padraoComParcGrudado)
+        if (match) {
         dataStr = match[1] // "28/10"
         const descricaoComParc = match[2] // "SHEIN *SHU FEPARC01/"
         const digitoFinalParc = match[3] // "0" ou "2" (último dígito do total de parcelas)
@@ -136,11 +139,6 @@ export class PicPayParser extends BaseBankStatementParser {
         
         // Reconstrói a descrição completa com o parcelamento
         descricao = `${descricaoComParc}${digitoFinalParc}`.trim()
-        
-        // CORREÇÃO CRÍTICA: Determina o valor correto
-        // Se o valor começa com o dígito do parcelamento seguido de mais dígitos, remove o primeiro dígito
-        // Exemplo 1: valorComDigito = "267,90", digitoFinalParc = "2" -> valor = "67,90" (remove "2")
-        // Exemplo 2: valorComDigito = "67,90", digitoFinalParc = "0" -> valor = "67,90" (não remove, "0" não é parte do valor)
         
         // Verifica se o primeiro dígito do valor corresponde ao dígito do parcelamento
         const primeiroDigitoValor = valorComDigito.substring(0, 1)
@@ -151,17 +149,14 @@ export class PicPayParser extends BaseBankStatementParser {
           valorStr = valorComDigito.substring(1)
           console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (removido dígito ${digitoFinalParc} do parcelamento): "${valorComDigito}" -> "${valorStr}"`)
         } else {
-          // Verifica se são dois dígitos do parcelamento (ex: "02" grudado com "267,90")
           const doisDigitosInicio = valorComDigito.substring(0, 2)
           const terceiroDigito = valorComDigito.length > 2 ? valorComDigito.substring(2, 3) : ''
           
-          // Tenta inferir o total de parcelas do contexto
           const parcelaMatch = descricao.match(/PARC(\d{1,2})\/(\d{1,2})/i)
           if (parcelaMatch) {
             const totalParcelas = parseInt(parcelaMatch[2])
             const totalParcelasStr = totalParcelas.toString().padStart(2, '0')
             
-            // Se os dois primeiros dígitos do valor correspondem ao total de parcelas, remove-os
             if (doisDigitosInicio === totalParcelasStr && terceiroDigito && /\d/.test(terceiroDigito)) {
               valorStr = valorComDigito.substring(2)
               console.log(`[${this.bankName} Parser] 🔧 Valor corrigido (removidos dígitos ${totalParcelasStr} do parcelamento): "${valorComDigito}" -> "${valorStr}"`)
@@ -174,7 +169,7 @@ export class PicPayParser extends BaseBankStatementParser {
         }
         
         console.log(`[${this.bankName} Parser] ✅ Padrão PARC grudado detectado: descrição="${descricao.substring(0, 50)}", valor="${valorStr}"`)
-      } else {
+        } else {
         // PRIORIDADE 2: Tenta padrão com ano primeiro (com espaços)
         match = linha.match(padraoComAno)
         if (match) {
@@ -242,6 +237,7 @@ export class PicPayParser extends BaseBankStatementParser {
               }
             }
           }
+        }
         }
       }
       
@@ -649,13 +645,27 @@ export class PicPayParser extends BaseBankStatementParser {
   }
 
   private deveIgnorarLinha(linha: string): boolean {
-    const linhaLower = linha.toLowerCase()
-    return (
-      linhaLower.includes('data') && linhaLower.includes('estabelecimento') ||
+    if (/^\d{2}\/\d{2}/.test(linha)) {
+      return false
+    }
+
+    const linhaLower = linha.toLowerCase().trim()
+
+    if (
+      (linhaLower.includes('data') && linhaLower.includes('estabelecimento')) ||
       linhaLower.includes('resumo da fatura') ||
-      linhaLower.includes('total da fatura') ||
-      linhaLower.includes('vencimento')
-    )
+      /^total da fatura\b/.test(linhaLower) ||
+      /^vencimento\s*:/.test(linhaLower) ||
+      /^picpay card\b/.test(linhaLower) ||
+      /^transa[cç][oõ]es\s+(nacionais|internacionais)\b/.test(linhaLower) ||
+      /^despesas do m[eê]s\b/.test(linhaLower) ||
+      /^pagamento de fatura\b/.test(linhaLower) ||
+      /^cr[eé]ditos\b/.test(linhaLower)
+    ) {
+      return true
+    }
+
+    return false
   }
 }
 

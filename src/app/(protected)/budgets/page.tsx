@@ -8,9 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { Plus, Trash2, Edit } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { getBudgetStatusColor } from '@/utils/helpers'
 
 export default function BudgetsPage() {
   const { budgets, loading, error, fetchBudgets, deleteBudget } = useBudgetsStore()
@@ -21,7 +23,7 @@ export default function BudgetsPage() {
   })
 
   useEffect(() => {
-    fetchBudgets(selectedMonth + '-01')
+    fetchBudgets(selectedMonth)
     fetchCategories()
   }, [fetchBudgets, fetchCategories, selectedMonth])
 
@@ -163,6 +165,7 @@ export default function BudgetsPage() {
                     <TableHead>Categoria</TableHead>
                     <TableHead>Mês</TableHead>
                     <TableHead>Valor Limite</TableHead>
+                    <TableHead>Consumo</TableHead>
                     <TableHead>Alerta</TableHead>
                     <TableHead>Ações</TableHead>
                   </TableRow>
@@ -178,6 +181,26 @@ export default function BudgetsPage() {
                       </TableCell>
                       <TableCell>
                         {formatCurrency(budget.limit_amount)}
+                      </TableCell>
+                      <TableCell className="min-w-[200px]">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>
+                              {formatCurrency(budget.spent_amount ?? 0)}
+                            </span>
+                            <span
+                              className={getBudgetStatusColor(
+                                budget.usage_percentage ?? 0
+                              )}
+                            >
+                              {(budget.usage_percentage ?? 0).toFixed(0)}%
+                            </span>
+                          </div>
+                          <Progress
+                            value={Math.min(budget.usage_percentage ?? 0, 100)}
+                            className="h-2"
+                          />
+                        </div>
                       </TableCell>
                       <TableCell>
                         {budget.alert_percentage ? (

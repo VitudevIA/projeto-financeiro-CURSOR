@@ -8,6 +8,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import {
+  addMonthsToMesReferencia,
+  getCurrentMesReferencia,
+} from '@/utils/mes-referencia';
 
 export interface ForecastPeriod {
   month: string; // YYYY-MM
@@ -46,20 +50,23 @@ export async function GET(request: NextRequest) {
     const forecastMonths = Math.min(6, Math.max(1, months));
     const historicalPeriod = Math.max(3, Math.min(12, historyMonths));
 
-    // Calcula datas históricas
-    const now = new Date();
-    const endDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startDate = new Date(endDate);
-    startDate.setMonth(startDate.getMonth() - historicalPeriod);
+    const currentMesReferencia = getCurrentMesReferencia();
+    const minMesReferencia = addMonthsToMesReferencia(
+      currentMesReferencia,
+      -(historicalPeriod - 1)
+    );
+    const maxMesReferencia = addMonthsToMesReferencia(
+      currentMesReferencia,
+      forecastMonths
+    );
 
-    // Busca transações históricas
     const { data: transactions, error: transError } = await supabase
       .from('transactions')
-      .select('amount, type, transaction_date')
+      .select('amount, type, mes_referencia')
       .eq('user_id', user.id)
-      .gte('transaction_date', startDate.toISOString().split('T')[0])
-      .lte('transaction_date', endDate.toISOString().split('T')[0])
-      .order('transaction_date', { ascending: true });
+      .gte('mes_referencia', minMesReferencia)
+      .lte('mes_referencia', maxMesReferencia)
+      .order('mes_referencia', { ascending: true });
 
     if (transError) {
       console.error('Erro ao buscar transações:', transError);
@@ -69,20 +76,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!transactions || transactions.length < 3) {
-      return NextResponse.json(
-        {
-          forecast: [],
-          message: 'Dados insuficientes para fazer previsões. Precisa de pelo menos 3 meses de histórico.',
-        },
-        { status: 200 }
-      );
-    }
-
-    // Agrupa por mês
+    // Agrupa por competência (mes_referencia), incluindo parcelas futuras já indexadas
     const monthlyData = new Map<string, { income: number; expenses: number; count: number }>();
     (transactions || []).forEach(t => {
-      const month = t.transaction_date.substring(0, 7); // YYYY-MM
+      const month = t.mes_referencia;
+      if (!month) return;
       const current = monthlyData.get(month) || { income: 0, expenses: 0, count: 0 };
       if (t.type === 'income') {
         current.income += Number(t.amount);
@@ -97,25 +95,34 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([month, data]) => ({ month, ...data }));
 
-    if (monthlyArray.length === 0) {
+    const historicalArray = monthlyArray.filter(
+      (m) => m.month <= currentMesReferencia
+    );
+
+    if (historicalArray.length < 3) {
       return NextResponse.json(
-        { forecast: [], message: 'Sem dados para análise' },
+        {
+          forecast: [],
+          message: 'Dados insuficientes para fazer previsões. Precisa de pelo menos 3 meses de histórico.',
+        },
         { status: 200 }
       );
     }
 
-    // Calcula médias (média móvel ponderada simples)
-    const avgExpenses = monthlyArray.reduce((sum, m) => sum + m.expenses, 0) / monthlyArray.length;
-    const avgIncome = monthlyArray.reduce((sum, m) => sum + m.income, 0) / monthlyArray.length;
+    // Calcula médias (média móvel ponderada simples) — somente competências passadas/atuais
+    const avgExpenses =
+      historicalArray.reduce((sum, m) => sum + m.expenses, 0) / historicalArray.length;
+    const avgIncome =
+      historicalArray.reduce((sum, m) => sum + m.income, 0) / historicalArray.length;
 
     // Calcula tendência (linear regression simples)
-    const n = monthlyArray.length;
+    const n = historicalArray.length;
     let sumX = 0;
     let sumY = 0;
     let sumXY = 0;
     let sumX2 = 0;
 
-    monthlyArray.forEach((month, index) => {
+    historicalArray.forEach((month, index) => {
       const x = index;
       const y = month.expenses;
       sumX += x;
@@ -128,24 +135,29 @@ export async function GET(request: NextRequest) {
     const interceptExpenses = (sumY - slopeExpenses * sumX) / n;
 
     // Calcula variância para intervalo de confiança
-    const variance = monthlyArray.reduce((sum, m) => {
-      const diff = m.expenses - avgExpenses;
-      return sum + diff * diff;
-    }, 0) / monthlyArray.length;
+    const variance =
+      historicalArray.reduce((sum, m) => {
+        const diff = m.expenses - avgExpenses;
+        return sum + diff * diff;
+      }, 0) / historicalArray.length;
     const stdDev = Math.sqrt(variance);
 
     // Gera previsões
     const forecast: ForecastPeriod[] = [];
-    const lastMonth = monthlyArray[monthlyArray.length - 1];
 
     for (let i = 1; i <= forecastMonths; i++) {
-      const forecastMonth = new Date(endDate);
-      forecastMonth.setMonth(forecastMonth.getMonth() + i);
-      const monthStr = `${forecastMonth.getFullYear()}-${String(forecastMonth.getMonth() + 1).padStart(2, '0')}`;
+      const monthStr = addMonthsToMesReferencia(currentMesReferencia, i);
 
-      // Previsão baseada em tendência
-      const predictedExpenses = Math.max(0, interceptExpenses + slopeExpenses * (monthlyArray.length + i - 1));
-      const predictedIncome = avgIncome; // Mantém receita constante (simplificado)
+      const trendPredicted = Math.max(
+        0,
+        interceptExpenses + slopeExpenses * (historicalArray.length + i - 1)
+      );
+      const knownCommitted = monthlyData.get(monthStr)?.expenses ?? 0;
+      const knownIncome = monthlyData.get(monthStr)?.income ?? 0;
+
+      // Parcelas futuras já indexadas na competência de destino elevam o piso da previsão
+      const predictedExpenses = Math.max(knownCommitted, trendPredicted);
+      const predictedIncome = knownIncome > 0 ? knownIncome : avgIncome;
 
       // Intervalo de confiança (±1.5σ para 87% de confiança aproximada)
       const margin = stdDev * 1.5;
@@ -178,7 +190,7 @@ export async function GET(request: NextRequest) {
       {
         forecast,
         metadata: {
-          historicalPeriods: monthlyArray.length,
+          historicalPeriods: historicalArray.length,
           forecastPeriods: forecastMonths,
           avgMonthlyExpenses: Math.round(avgExpenses * 100) / 100,
           avgMonthlyIncome: Math.round(avgIncome * 100) / 100,

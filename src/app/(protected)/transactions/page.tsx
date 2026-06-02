@@ -537,6 +537,7 @@ export default function TransactionsPage() {
       <ImportTransactionsModal
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
+        defaultMesReferencia={filters.mesReferencia}
         onImportSuccess={() => {
           applyFilters()
         }}

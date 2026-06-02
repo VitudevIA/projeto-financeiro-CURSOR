@@ -18,35 +18,52 @@ import { useCardsStore } from '@/lib/stores/cards-store'
 import { useDashboardStore } from '@/lib/stores/dashboard-store'
 import { useAuthStore } from '@/lib/stores/auth-store'
 
+import {
+  getCurrentMesReferencia,
+  getMesReferenciaOptions,
+  isValidMesReferencia,
+  type MesReferencia,
+} from '@/utils/mes-referencia'
+
 interface ImportTransactionsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onImportSuccess?: () => void
+  /** Mês de referência filtrado na listagem de transações */
+  defaultMesReferencia?: MesReferencia
 }
 
 export function ImportTransactionsModal({
   open,
   onOpenChange,
   onImportSuccess,
+  defaultMesReferencia,
 }: ImportTransactionsModalProps) {
   const [importing, setImporting] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<'credit' | 'debit' | 'cash' | 'pix' | 'boleto' | ''>('')
   const [cardId, setCardId] = useState<string>('')
+  const [mesReferenciaImportacao, setMesReferenciaImportacao] = useState<MesReferencia>(
+    defaultMesReferencia ?? getCurrentMesReferencia()
+  )
   const [validationErrors, setValidationErrors] = useState<{
     paymentMethod?: string
     cardId?: string
+    mesReferencia?: string
   }>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { cards, fetchCards } = useCardsStore()
   const { fetchDashboardData } = useDashboardStore()
   const { user } = useAuthStore()
 
-  // Carrega cartões quando o modal abre
+  const mesReferenciaOptions = getMesReferenciaOptions()
+
+  // Carrega cartões e sincroniza mês de referência quando o modal abre
   useEffect(() => {
     if (open) {
       fetchCards()
+      setMesReferenciaImportacao(defaultMesReferencia ?? getCurrentMesReferencia())
     }
-  }, [open, fetchCards])
+  }, [open, fetchCards, defaultMesReferencia])
 
   // Filtra cartões baseado no método de pagamento selecionado
   const filteredCards = paymentMethod === 'credit' || paymentMethod === 'debit'
@@ -65,10 +82,18 @@ export function ImportTransactionsModal({
 
   // Valida campos antes de importar
   const validateFields = (): boolean => {
-    const errors: { paymentMethod?: string; cardId?: string } = {}
+    const errors: {
+      paymentMethod?: string
+      cardId?: string
+      mesReferencia?: string
+    } = {}
 
     if (!paymentMethod) {
       errors.paymentMethod = 'Método de pagamento é obrigatório'
+    }
+
+    if (!mesReferenciaImportacao || !isValidMesReferencia(mesReferenciaImportacao)) {
+      errors.mesReferencia = 'Selecione um mês de referência válido'
     }
 
     if ((paymentMethod === 'credit' || paymentMethod === 'debit') && !cardId) {
@@ -121,6 +146,7 @@ export function ImportTransactionsModal({
       const formData = new FormData()
       formData.append('file', file)
       formData.append('paymentMethod', paymentMethod)
+      formData.append('mesReferencia', mesReferenciaImportacao)
       if (cardId) {
         formData.append('cardId', cardId)
       }
@@ -162,6 +188,7 @@ export function ImportTransactionsModal({
       }
       setPaymentMethod('')
       setCardId('')
+      setMesReferenciaImportacao(defaultMesReferencia ?? getCurrentMesReferencia())
       setValidationErrors({})
 
       // Atualiza Dashboard após importação bem-sucedida
@@ -185,10 +212,24 @@ export function ImportTransactionsModal({
     }
   }
 
+  const handleMesReferenciaChange = (value: string) => {
+    setMesReferenciaImportacao(value)
+    setValidationErrors((prev) => ({ ...prev, mesReferencia: undefined }))
+  }
+
+  const canSelectFile =
+    Boolean(paymentMethod) &&
+    Boolean(mesReferenciaImportacao) &&
+    isValidMesReferencia(mesReferenciaImportacao) &&
+    !(
+      (paymentMethod === 'credit' || paymentMethod === 'debit') &&
+      (filteredCards.length === 0 || !cardId)
+    )
+
   const handleImportClick = () => {
     // Valida antes de abrir o seletor de arquivo
     if (!validateFields()) {
-      toast.error('Selecione o método de pagamento antes de escolher o arquivo')
+      toast.error('Preencha método de pagamento e mês de referência antes de escolher o arquivo')
       return
     }
     fileInputRef.current?.click()
@@ -348,6 +389,38 @@ export function ImportTransactionsModal({
                   </div>
                 )}
 
+                {/* Mês de referência — OBRIGATÓRIO */}
+                <div className="space-y-2">
+                  <Label htmlFor="mesReferenciaImportacao" className="text-sm font-medium">
+                    Mês de referência para importação <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={mesReferenciaImportacao}
+                    onValueChange={handleMesReferenciaChange}
+                  >
+                    <SelectTrigger
+                      id="mesReferenciaImportacao"
+                      className={`rounded-md ${validationErrors.mesReferencia ? 'border-destructive' : ''}`}
+                    >
+                      <SelectValue placeholder="Selecione o mês de competência" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mesReferenciaOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {validationErrors.mesReferencia && (
+                    <p className="text-sm text-destructive">{validationErrors.mesReferencia}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Todas as despesas importadas serão lançadas neste mês de competência, salvo se a planilha
+                    informar a coluna <code>mes_referencia</code>.
+                  </p>
+                </div>
+
                 {/* Input de arquivo */}
                 <input
                   ref={fileInputRef}
@@ -358,7 +431,7 @@ export function ImportTransactionsModal({
                 />
                 <Button
                   onClick={handleImportClick}
-                  disabled={importing || !paymentMethod || (filteredCards.length === 0 && (paymentMethod === 'credit' || paymentMethod === 'debit'))}
+                  disabled={importing || !canSelectFile}
                   className="flex items-center gap-2"
                 >
                   <Upload className="h-4 w-4" />
@@ -372,11 +445,12 @@ export function ImportTransactionsModal({
           <div className="bg-muted/50 rounded-lg p-4 space-y-2">
             <h4 className="font-semibold text-sm">Instruções:</h4>
             <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+              <li><strong>Competência:</strong> O mês selecionado acima é o destino padrão de todos os gastos importados (CSV, XLSX e PDF)</li>
               <li><strong>CSV/XLSX:</strong> Baixe o modelo e preencha com suas despesas</li>
               <li><strong>CSV/XLSX:</strong> Mantenha o formato original (não altere as colunas)</li>
               <li><strong>CSV/XLSX:</strong> Data no formato: AAAA-MM-DD (ex: 2025-01-15)</li>
-              <li><strong>CSV/XLSX:</strong> Coluna opcional <code>mes_referencia</code> (AAAA-MM). Se vazia: crédito → mês seguinte; PIX/débito → mês da data</li>
-              <li><strong>PDF:</strong> Mês de referência inferido automaticamente (editável depois em Transações)</li>
+              <li><strong>CSV/XLSX:</strong> Coluna opcional <code>mes_referencia</code> (AAAA-MM). Se preenchida, sobrescreve o mês selecionado no modal</li>
+              <li><strong>PDF:</strong> Usa o mês de referência selecionado no modal como competência das despesas extraídas</li>
               <li><strong>CSV/XLSX:</strong> Valor em número decimal (ex: 150.50)</li>
               <li><strong>CSV/XLSX:</strong> Método de pagamento: credit, debit, cash, pix ou boleto</li>
               <li><strong>PDF:</strong> Envie a fatura do seu cartão de crédito em PDF</li>

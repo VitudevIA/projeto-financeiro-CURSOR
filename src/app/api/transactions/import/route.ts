@@ -11,18 +11,15 @@ import * as XLSX from 'xlsx'
 import { extractTextFromPDF, parseCreditCardBill, ExtractedTransaction } from '@/utils/pdf-parser'
 import { recognizeCategory, recognizeCategoryLegacy, type Category } from '@/utils/category-recognition'
 import { TransactionDeduplicationService, type TransactionForDeduplication } from '@/services/transaction-deduplication-service'
-import { inferMesReferencia, isValidMesReferencia } from '@/utils/mes-referencia'
+import { resolveMesReferenciaForImport, isValidMesReferencia } from '@/utils/mes-referencia'
 
-function resolveMesReferencia(
+function buildImportDuplicateKey(
+  description: string,
+  amount: number,
   transactionDate: string,
-  paymentMethod: string,
-  explicit?: string | null
+  mesReferencia: string
 ): string {
-  const trimmed = explicit != null ? String(explicit).trim() : ''
-  if (trimmed && isValidMesReferencia(trimmed)) {
-    return trimmed
-  }
-  return inferMesReferencia(transactionDate, paymentMethod)
+  return `${description.trim()}|${Number(amount).toFixed(2)}|${transactionDate}|${mesReferencia}`
 }
 
 export async function POST(request: NextRequest) {
@@ -42,6 +39,7 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File
     const paymentMethodFromForm = formData.get('paymentMethod') as string
     const cardIdFromForm = formData.get('cardId') as string
+    const mesReferenciaFromForm = formData.get('mesReferencia') as string | null
     
     // Opções de deduplicação (padrão: apenas parcela atual)
     const importarApenasParcelaAtual = formData.get('importarApenasParcelaAtual') !== 'false'
@@ -55,6 +53,12 @@ export async function POST(request: NextRequest) {
     if (!paymentMethodFromForm) {
       return NextResponse.json({ error: 'Método de pagamento é obrigatório' }, { status: 400 })
     }
+
+    if (!mesReferenciaFromForm || !isValidMesReferencia(mesReferenciaFromForm)) {
+      return NextResponse.json({ error: 'Mês de referência para importação é obrigatório' }, { status: 400 })
+    }
+
+    const defaultMesReferencia = mesReferenciaFromForm
 
     // Valida cartão obrigatório para crédito/débito
     if ((paymentMethodFromForm === 'credit' || paymentMethodFromForm === 'debit') && !cardIdFromForm) {
@@ -246,7 +250,7 @@ export async function POST(request: NextRequest) {
     
     const { data: transacoesExistentesRaw, error: errorBuscarExistentes } = await supabase
       .from('transactions')
-      .select('description, amount, transaction_date, type, installment_number, total_installments')
+      .select('description, amount, transaction_date, mes_referencia, type, installment_number, total_installments')
       .eq('user_id', user.id)
       .gte('transaction_date', doisAnosAtras.toISOString().split('T')[0])
       .order('transaction_date', { ascending: false })
@@ -382,7 +386,44 @@ export async function POST(request: NextRequest) {
     // Processa e insere transações
     let successCount = 0
     let errorCount = 0
+    let ignoredDuplicateCount = 0
     const errors: string[] = []
+
+    const duplicateKeys = new Set<string>(
+      (transacoesExistentesRaw || []).map((t) =>
+        buildImportDuplicateKey(
+          t.description,
+          parseFloat(String(t.amount)),
+          t.transaction_date,
+          t.mes_referencia ?? ''
+        )
+      )
+    )
+    const batchDuplicateKeys = new Set<string>()
+
+    const tryInsertTransaction = async (
+      record: Record<string, unknown>
+    ): Promise<'inserted' | 'ignored' | 'error'> => {
+      const description = String(record.description)
+      const amount = Number(record.amount)
+      const transactionDate = String(record.transaction_date)
+      const mesReferencia = String(record.mes_referencia)
+      const key = buildImportDuplicateKey(description, amount, transactionDate, mesReferencia)
+
+      if (duplicateKeys.has(key) || batchDuplicateKeys.has(key)) {
+        return 'ignored'
+      }
+
+      const { error: insertError } = await supabase.from('transactions').insert([record as never])
+
+      if (insertError) {
+        return 'error'
+      }
+
+      duplicateKeys.add(key)
+      batchDuplicateKeys.add(key)
+      return 'inserted'
+    }
 
     for (const transaction of transactions) {
       try {
@@ -685,30 +726,35 @@ export async function POST(request: NextRequest) {
             const finalCardIdForInstallment = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
             
             const installmentDateStr = installmentDate.toISOString().split('T')[0]
-            const { error: insertError } = await supabase.from('transactions').insert([
-              {
-                user_id: user.id,
-                description: installmentDescription,
-                amount: installmentAmount,
-                type: 'expense',
-                category_id: categoryId,
-                transaction_date: installmentDateStr,
-                mes_referencia: resolveMesReferencia(
-                  installmentDateStr,
-                  validatedMethod,
-                  transaction.mes_referencia
-                ),
-                payment_method: validatedMethod,
-                card_id: finalCardIdForInstallment, // Null para métodos que não são cartão
-                expense_nature: 'installment',
-                installment_number: currentInstallmentNumber,
-                total_installments: totalInstallments,
-                notes: transaction.observacoes || null,
-              },
-            ])
+            const installmentMesReferencia = resolveMesReferenciaForImport({
+              transactionDate: installmentDateStr,
+              paymentMethod: validatedMethod,
+              explicit: transaction.mes_referencia,
+              defaultFromImport: defaultMesReferencia,
+              installmentNumber: currentInstallmentNumber,
+              totalInstallments,
+            })
 
-            if (insertError) {
-              installmentErrors.push(`Parcela ${currentInstallmentNumber}/${totalInstallments}: ${insertError.message}`)
+            const insertResult = await tryInsertTransaction({
+              user_id: user.id,
+              description: installmentDescription,
+              amount: installmentAmount,
+              type: 'expense',
+              category_id: categoryId,
+              transaction_date: installmentDateStr,
+              mes_referencia: installmentMesReferencia,
+              payment_method: validatedMethod,
+              card_id: finalCardIdForInstallment,
+              expense_nature: 'installment',
+              installment_number: currentInstallmentNumber,
+              total_installments: totalInstallments,
+              notes: transaction.observacoes || null,
+            })
+
+            if (insertResult === 'error') {
+              installmentErrors.push(`Parcela ${currentInstallmentNumber}/${totalInstallments}: falha ao inserir`)
+            } else if (insertResult === 'ignored') {
+              ignoredDuplicateCount++
             } else {
               installmentsCreated++
             }
@@ -755,31 +801,37 @@ export async function POST(request: NextRequest) {
           const finalCardIdForInsert = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
           
           const transactionDateStr = formatDate(String(transaction.data))
-          const { error: insertError } = await supabase.from('transactions').insert([
-            {
-              user_id: user.id,
-              description: finalDescription,
-              amount: finalAmount,
-              type: 'expense',
-              category_id: categoryId,
-              transaction_date: transactionDateStr,
-              mes_referencia: resolveMesReferencia(
-                transactionDateStr,
-                validatedMethod,
-                transaction.mes_referencia
-              ),
-              payment_method: validatedMethod,
-              card_id: finalCardIdForInsert, // Null para métodos que não são cartão
-              expense_nature: validatedExpenseNature,
-              installment_number: installmentNumber,
-              total_installments: totalInstallments,
-              notes: transaction.observacoes || null,
-            },
-          ])
+          const isMultiInstallment = Boolean(totalInstallments && totalInstallments > 1)
+          const transactionMesReferencia = resolveMesReferenciaForImport({
+            transactionDate: transactionDateStr,
+            paymentMethod: validatedMethod,
+            explicit: transaction.mes_referencia,
+            defaultFromImport: defaultMesReferencia,
+            installmentNumber: isMultiInstallment ? installmentNumber : null,
+            totalInstallments: isMultiInstallment ? totalInstallments : null,
+          })
 
-          if (insertError) {
+          const insertResult = await tryInsertTransaction({
+            user_id: user.id,
+            description: finalDescription,
+            amount: finalAmount,
+            type: 'expense',
+            category_id: categoryId,
+            transaction_date: transactionDateStr,
+            mes_referencia: transactionMesReferencia,
+            payment_method: validatedMethod,
+            card_id: finalCardIdForInsert,
+            expense_nature: validatedExpenseNature,
+            installment_number: installmentNumber,
+            total_installments: totalInstallments,
+            notes: transaction.observacoes || null,
+          })
+
+          if (insertResult === 'error') {
             errorCount++
-            errors.push(`Erro ao importar: ${transaction.descricao} - ${insertError.message}`)
+            errors.push(`Erro ao importar: ${transaction.descricao}`)
+          } else if (insertResult === 'ignored') {
+            ignoredDuplicateCount++
           } else {
             successCount++
           }
@@ -791,16 +843,25 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const ignoredSuffix =
+      ignoredDuplicateCount > 0
+        ? `, ${ignoredDuplicateCount} ignorada(s) por já estarem cadastradas`
+        : ''
+    const errorSuffix = errorCount > 0 ? `, ${errorCount} erro(s)` : ''
+
     return NextResponse.json(
       {
         count: successCount,
         errors: errorCount,
-        errorMessages: errors.slice(0, 10), // Limita a 10 erros
-        message: `${successCount} transação(ões) importada(s) com sucesso${errorCount > 0 ? `, ${errorCount} erro(s)` : ''}`,
+        ignoredDuplicates: ignoredDuplicateCount,
+        errorMessages: errors.slice(0, 10),
+        message: `${successCount} transação(ões) importada(s) com sucesso${ignoredSuffix}${errorSuffix}`,
         deduplicacao: {
           totalAnalisadas: resultadoDeduplicacao.estatisticas.totalAnalisadas,
           novasTransacoes: successCount,
-          duplicatasBloqueadas: resultadoDeduplicacao.estatisticas.duplicatas,
+          duplicatasBloqueadas:
+            resultadoDeduplicacao.estatisticas.duplicatas + ignoredDuplicateCount,
+          ignoradasPorDuplicidade: ignoredDuplicateCount,
           avisos: resultadoDeduplicacao.estatisticas.avisos,
           duplicatas: resultadoDeduplicacao.duplicatas.map(d => ({
             descricao: d.transacao.descricao,
