@@ -69,7 +69,7 @@ export function MonthYearPicker({ value, onChange, onCurrentMonth, className }: 
       <PopoverTrigger asChild>
         <button
           className={cn(
-            "w-full flex items-center justify-between px-3 py-2 rounded-lg",
+            "w-full flex items-center justify-between px-3 py-2 rounded-md",
             "bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700",
             "border border-gray-200 dark:border-gray-700",
             "text-left font-normal text-sm text-gray-700 dark:text-gray-300",

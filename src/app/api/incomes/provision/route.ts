@@ -106,6 +106,8 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        const mesReferencia = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`
+
         transactionsToInsert.push({
           user_id: user.id,
           description: recurringIncome.description,
@@ -113,6 +115,7 @@ export async function POST(request: NextRequest) {
           type: 'income',
           category_id: recurringIncome.category_id,
           transaction_date: transactionDate.toISOString().split('T')[0],
+          mes_referencia: mesReferencia,
           payment_method: recurringIncome.payment_method,
           card_id: recurringIncome.card_id,
           notes: `Provisionado de receita recorrente: ${recurringIncome.id}`,

@@ -17,6 +17,12 @@ import { toast } from 'sonner'
 import { Zap, List, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
+import {
+  getMesReferenciaOptions,
+  inferMesReferencia,
+  isValidMesReferencia,
+  mesReferenciaFromDate,
+} from '@/utils/mes-referencia'
 
 interface TransactionFormData {
   description: string
@@ -24,6 +30,7 @@ interface TransactionFormData {
   type: 'income' | 'expense'
   categoryId: string
   transactionDate: string
+  mesReferencia: string
   installments: number
   expenseNature?: string
   paymentMethod: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
@@ -55,6 +62,7 @@ export default function NewTransactionPage() {
     type: 'expense',
     categoryId: '',
     transactionDate: new Date().toISOString().split('T')[0],
+    mesReferencia: mesReferenciaFromDate(new Date().toISOString().split('T')[0]),
     installments: 1,
     expenseNature: '',
     paymentMethod: 'cash',
@@ -64,6 +72,17 @@ export default function NewTransactionPage() {
   const [showOnlyActiveCards, setShowOnlyActiveCards] = useState<boolean>(true)
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({})
   const [topCategories, setTopCategories] = useState<string[]>([])
+  const mesReferenciaTouchedRef = useRef(false)
+  const mesReferenciaOptions = getMesReferenciaOptions()
+
+  // Sugere competência ao mudar data ou método (se usuário não alterou manualmente)
+  useEffect(() => {
+    if (mesReferenciaTouchedRef.current) return
+    setFormData((prev) => ({
+      ...prev,
+      mesReferencia: inferMesReferencia(prev.transactionDate, prev.paymentMethod),
+    }))
+  }, [formData.transactionDate, formData.paymentMethod])
 
   // Carregar dados ao montar
   useEffect(() => {
@@ -178,6 +197,19 @@ export default function NewTransactionPage() {
           return 'Método de pagamento é obrigatório'
         }
         return null
+      case 'mesReferencia':
+        if (!value || !String(value).trim()) {
+          return 'Mês de referência é obrigatório'
+        }
+        if (!isValidMesReferencia(String(value))) {
+          return 'Mês de referência inválido (use o formato do seletor)'
+        }
+        return null
+      case 'transactionDate':
+        if (!value || !String(value).trim()) {
+          return 'Data da compra é obrigatória'
+        }
+        return null
       case 'installments':
         if (value < 1 || value > 24) {
           return 'Parcelas deve estar entre 1 e 24'
@@ -218,62 +250,86 @@ export default function NewTransactionPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validação completa
-    const errors: ValidationErrors = {}
-    errors.description = validateField('description', formData.description) || undefined
-    errors.amount = validateField('amount', formData.amount) || undefined
-    errors.categoryId = validateField('categoryId', formData.categoryId) || undefined
-    errors.paymentMethod = validateField('paymentMethod', formData.paymentMethod) || undefined
+    // Garante competência válida antes de validar (Select usa valor YYYY-MM, ex: "2026-05")
+    const mesReferencia =
+      formData.mesReferencia && isValidMesReferencia(formData.mesReferencia)
+        ? formData.mesReferencia
+        : inferMesReferencia(formData.transactionDate, formData.paymentMethod)
 
-    if ((formData.paymentMethod === 'credit' || formData.paymentMethod === 'debit') && !cardId) {
+    const dataToSubmit: TransactionFormData = {
+      ...formData,
+      mesReferencia,
+    }
+
+    const errors: ValidationErrors = {}
+    const setError = (field: keyof TransactionFormData, message: string | null) => {
+      if (message) errors[field] = message
+    }
+
+    setError('description', validateField('description', dataToSubmit.description))
+    setError('amount', validateField('amount', dataToSubmit.amount))
+    setError('categoryId', validateField('categoryId', dataToSubmit.categoryId))
+    setError('paymentMethod', validateField('paymentMethod', dataToSubmit.paymentMethod))
+    setError('transactionDate', validateField('transactionDate', dataToSubmit.transactionDate))
+    setError('mesReferencia', validateField('mesReferencia', dataToSubmit.mesReferencia))
+    setError('installments', validateField('installments', dataToSubmit.installments))
+
+    if (
+      (dataToSubmit.paymentMethod === 'credit' || dataToSubmit.paymentMethod === 'debit') &&
+      !cardId
+    ) {
       errors.paymentMethod = 'Selecione um cartão para pagamentos de Crédito/Débito'
     }
 
-    const hasErrors = Object.values(errors).some((error) => error !== null)
+    // Somente strings de erro contam (undefined = campo OK)
+    const hasErrors = Object.values(errors).some((msg) => Boolean(msg))
     if (hasErrors) {
       setValidationErrors(errors)
       toast.error('Por favor, corrija os erros antes de continuar')
       return
     }
 
+    setValidationErrors({})
+
     try {
       // Salva preferências do usuário
       await savePreferences({
-        categoryId: formData.categoryId,
-        paymentMethod: formData.paymentMethod,
+        categoryId: dataToSubmit.categoryId,
+        paymentMethod: dataToSubmit.paymentMethod,
         cardId: cardId || undefined,
-        type: formData.type,
+        type: dataToSubmit.type,
       })
 
-      const installmentCount = formData.installments || 1
+      const installmentCount = dataToSubmit.installments || 1
       const errors: string[] = []
 
       if (installmentCount > 1) {
         // Criar transações parceladas
-        const installmentAmount = formData.amount / installmentCount
+        const installmentAmount = dataToSubmit.amount / installmentCount
         let createdCount = 0
 
         for (let i = 0; i < installmentCount; i++) {
-          const installmentDate = new Date(formData.transactionDate)
+          const installmentDate = new Date(dataToSubmit.transactionDate)
           installmentDate.setMonth(installmentDate.getMonth() + i)
 
-          const rawType = String(formData.type || '').trim().toLowerCase()
+          const rawType = String(dataToSubmit.type || '').trim().toLowerCase()
           const validatedType: 'income' | 'expense' =
             rawType === 'income' || rawType === 'expense' ? (rawType as 'income' | 'expense') : 'expense'
 
-          const rawPaymentMethod = String(formData.paymentMethod || '').trim().toLowerCase()
+          const rawPaymentMethod = String(dataToSubmit.paymentMethod || '').trim().toLowerCase()
           const validPaymentMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
           const validatedPaymentMethod = validPaymentMethods.includes(rawPaymentMethod)
             ? (rawPaymentMethod as 'credit' | 'debit' | 'cash' | 'pix' | 'boleto')
             : 'cash'
 
           const transactionData = {
-            description: `${formData.description} (${i + 1}/${installmentCount})`,
+            description: `${dataToSubmit.description} (${i + 1}/${installmentCount})`,
             amount: installmentAmount,
             type: validatedType,
-            category_id: formData.categoryId,
+            category_id: dataToSubmit.categoryId,
             transaction_date: installmentDate.toISOString().split('T')[0],
-            expense_nature: formData.expenseNature || null,
+            mes_referencia: dataToSubmit.mesReferencia,
+            expense_nature: dataToSubmit.expenseNature || null,
             installment_number: i + 1,
             total_installments: installmentCount,
             payment_method: validatedPaymentMethod,
@@ -302,23 +358,24 @@ export default function NewTransactionPage() {
         }
       } else {
         // Criar transação única
-        const rawType = String(formData.type || '').trim().toLowerCase()
+        const rawType = String(dataToSubmit.type || '').trim().toLowerCase()
         const validatedType: 'income' | 'expense' =
           rawType === 'income' || rawType === 'expense' ? (rawType as 'income' | 'expense') : 'expense'
 
-        const rawPaymentMethod = String(formData.paymentMethod || '').trim().toLowerCase()
+        const rawPaymentMethod = String(dataToSubmit.paymentMethod || '').trim().toLowerCase()
         const validPaymentMethods = ['credit', 'debit', 'cash', 'pix', 'boleto']
         const validatedPaymentMethod = validPaymentMethods.includes(rawPaymentMethod)
           ? (rawPaymentMethod as 'credit' | 'debit' | 'cash' | 'pix' | 'boleto')
           : 'cash'
 
         const transactionData = {
-          description: formData.description,
-          amount: formData.amount,
+          description: dataToSubmit.description,
+          amount: dataToSubmit.amount,
           type: validatedType,
-          category_id: formData.categoryId,
-          transaction_date: formData.transactionDate,
-          expense_nature: formData.expenseNature || null,
+          category_id: dataToSubmit.categoryId,
+          transaction_date: dataToSubmit.transactionDate,
+          mes_referencia: dataToSubmit.mesReferencia,
+          expense_nature: dataToSubmit.expenseNature || null,
           installment_number: null,
           total_installments: null,
           payment_method: validatedPaymentMethod,
@@ -659,10 +716,10 @@ export default function NewTransactionPage() {
                 </>
               )}
 
-              {/* Data */}
+              {/* Data da compra */}
               <div className="space-y-2 p-4 bg-muted/50 rounded-lg border">
                 <label htmlFor="transactionDate" className="text-sm font-medium flex items-center gap-2">
-                  Data <span className="text-destructive">*</span>
+                  Data da compra <span className="text-destructive">*</span>
                 </label>
                 <Input
                   id="transactionDate"
@@ -670,6 +727,44 @@ export default function NewTransactionPage() {
                   value={formData.transactionDate}
                   onChange={(e) => handleInputChange('transactionDate', e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-2 p-4 bg-muted/50 rounded-lg border">
+                <label htmlFor="mesReferencia" className="text-sm font-medium flex items-center gap-2">
+                  Mês de referência <span className="text-destructive">*</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Em qual mês essa despesa entra no seu controle (ex.: compra dia 29/05 na fatura de junho).
+                </p>
+                <Select
+                  value={formData.mesReferencia || undefined}
+                  onValueChange={(value) => {
+                    mesReferenciaTouchedRef.current = true
+                    handleInputChange('mesReferencia', value)
+                  }}
+                >
+                  <SelectTrigger
+                    id="mesReferencia"
+                    className={cn(
+                      validationErrors.mesReferencia && 'border-destructive focus-visible:ring-destructive/20'
+                    )}
+                  >
+                    <SelectValue placeholder="Selecione o mês de competência" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mesReferenciaOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {validationErrors.mesReferencia && (
+                  <p className="text-xs text-destructive flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    {validationErrors.mesReferencia}
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-4 pt-4">

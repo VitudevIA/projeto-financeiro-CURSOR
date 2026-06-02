@@ -19,6 +19,11 @@ import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { Transaction } from '@/types/database.types'
+import {
+  getMesReferenciaOptions,
+  inferMesReferencia,
+  mesReferenciaFromDate,
+} from '@/utils/mes-referencia'
 
 interface TransactionFormData {
   description: string
@@ -26,6 +31,7 @@ interface TransactionFormData {
   type: 'income' | 'expense'
   categoryId: string
   transactionDate: string
+  mesReferencia: string
   installments: number
   expenseNature?: string
   paymentMethod: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
@@ -61,6 +67,7 @@ export default function EditTransactionPage() {
     type: 'expense',
     categoryId: '',
     transactionDate: new Date().toISOString().split('T')[0],
+    mesReferencia: mesReferenciaFromDate(new Date().toISOString().split('T')[0]),
     installments: 1,
     expenseNature: '',
     paymentMethod: 'cash',
@@ -70,6 +77,16 @@ export default function EditTransactionPage() {
   const [showOnlyActiveCards, setShowOnlyActiveCards] = useState<boolean>(true)
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({})
   const [topCategories, setTopCategories] = useState<string[]>([])
+  const mesReferenciaTouchedRef = useRef(false)
+  const mesReferenciaOptions = getMesReferenciaOptions()
+
+  useEffect(() => {
+    if (mesReferenciaTouchedRef.current || loadingTransaction) return
+    setFormData((prev) => ({
+      ...prev,
+      mesReferencia: inferMesReferencia(prev.transactionDate, prev.paymentMethod),
+    }))
+  }, [formData.transactionDate, formData.paymentMethod, loadingTransaction])
 
   // Carregar categorias e cartões primeiro (antes de buscar a transação)
   useEffect(() => {
@@ -150,6 +167,12 @@ export default function EditTransactionPage() {
           type: (transaction.type === 'income' || transaction.type === 'expense') ? transaction.type : 'expense',
           categoryId: transaction.category_id || '',
           transactionDate: transaction.transaction_date || new Date().toISOString().split('T')[0],
+          mesReferencia:
+            (transaction as Transaction & { mes_referencia?: string }).mes_referencia ??
+            inferMesReferencia(
+              transaction.transaction_date || new Date().toISOString().split('T')[0],
+              transaction.payment_method || 'cash'
+            ),
           installments: transaction.total_installments || 1,
           expenseNature: transaction.expense_nature || '',
           paymentMethod: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(transaction.payment_method || ''))
@@ -324,6 +347,7 @@ export default function EditTransactionPage() {
         type: validatedType,
         category_id: formData.categoryId,
         transaction_date: formData.transactionDate,
+        mes_referencia: formData.mesReferencia,
         payment_method: validatedPaymentMethod,
         card_id: validatedPaymentMethod === 'credit' || validatedPaymentMethod === 'debit' ? cardId : null,
         expense_nature: formData.expenseNature || null,
@@ -724,10 +748,10 @@ export default function EditTransactionPage() {
                 </>
               )}
 
-              {/* Data */}
+              {/* Data da compra */}
               <div className="space-y-2 p-4 bg-muted/50 rounded-lg border">
                 <label htmlFor="transactionDate" className="text-sm font-medium flex items-center gap-2">
-                  Data <span className="text-destructive">*</span>
+                  Data da compra <span className="text-destructive">*</span>
                 </label>
                 <Input
                   id="transactionDate"
@@ -735,6 +759,33 @@ export default function EditTransactionPage() {
                   value={formData.transactionDate}
                   onChange={(e) => handleInputChange('transactionDate', e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-2 p-4 bg-muted/50 rounded-lg border">
+                <label htmlFor="mesReferencia" className="text-sm font-medium flex items-center gap-2">
+                  Mês de referência <span className="text-destructive">*</span>
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Mês de competência no dashboard (Total Gasto). Pode diferir da data da compra.
+                </p>
+                <Select
+                  value={formData.mesReferencia}
+                  onValueChange={(value) => {
+                    mesReferenciaTouchedRef.current = true
+                    handleInputChange('mesReferencia', value)
+                  }}
+                >
+                  <SelectTrigger id="mesReferencia">
+                    <SelectValue placeholder="Selecione o mês de competência" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mesReferenciaOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex gap-4 pt-4">

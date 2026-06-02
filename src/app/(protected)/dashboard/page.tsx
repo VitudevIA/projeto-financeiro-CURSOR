@@ -17,6 +17,7 @@ import { useUserDataSync } from '@/hooks/useUserDataSync'
 import { cn } from '@/lib/utils'
 import { DashboardFilters, type DashboardFilters as DashboardFiltersType } from '@/components/dashboard/dashboard-filters-v2'
 import { ComparisonChart } from '@/components/dashboard/comparison-chart'
+import { getMonthDateRange, monthYearFromDateString } from '@/utils/mes-referencia'
 
 // Função auxiliar para formatar descrição do período
 const getPeriodDescription = (filters: DashboardFiltersType): string => {
@@ -26,8 +27,9 @@ const getPeriodDescription = (filters: DashboardFiltersType): string => {
   if (filters.periodPreset === 'last-year') return 'Ano anterior'
   if (filters.periodPreset === 'compare') return 'Período atual'
   if (filters.periodPreset === 'custom') {
-    const start = new Date(filters.startDate)
-    const end = new Date(filters.endDate)
+    const { month, year } = monthYearFromDateString(filters.startDate)
+    const start = new Date(year, month, 1)
+    const end = new Date(year, month + 1, 0)
     return `${start.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} - ${end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}`
   }
   return 'Período selecionado'
@@ -41,12 +43,11 @@ export default function DashboardPage() {
   // Estado dos filtros
   const [filters, setFilters] = useState<DashboardFiltersType>(() => {
     const now = new Date()
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    
+    const range = getMonthDateRange(now.getFullYear(), now.getMonth())
+
     return {
-      startDate: currentMonthStart.toISOString().split('T')[0],
-      endDate: currentMonthEnd.toISOString().split('T')[0],
+      startDate: range.start,
+      endDate: range.end,
       categoryId: null,
       cardId: null,
       periodPreset: 'current-month',

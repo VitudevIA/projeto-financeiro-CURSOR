@@ -2,27 +2,34 @@ import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import type { Transaction } from '@/types/database.types'
+import { inferMesReferencia, mesReferenciaRangeFromDates } from '@/utils/mes-referencia'
 
 type PaymentMethod = 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
 
 interface TransactionsStore {
   transactions: Transaction[]
+  incomeTransactions: Transaction[]
   loading: boolean
+  incomesLoading: boolean
   error: string | null
   fetchTransactions: (filters?: {
+    mesReferencia?: string
     startDate?: string
     endDate?: string
     categoryId?: string
     cardId?: string
     paymentMethod?: PaymentMethod | 'all'
     search?: string
+    transactionType?: 'income' | 'expense'
   }) => Promise<void>
+  fetchIncomeTransactions: (filters: { mesReferencia: string }) => Promise<void>
   addTransaction: (transaction: {
     description: string
     amount: number
     type: 'income' | 'expense'
     category_id: string
     transaction_date: string
+    mes_referencia?: string
     user_id?: string
     expense_nature?: string | null
     installment_number?: number | null
@@ -38,7 +45,9 @@ interface TransactionsStore {
 
 export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
   transactions: [],
+  incomeTransactions: [],
   loading: false,
+  incomesLoading: false,
   error: null,
 
   fetchTransactions: async (filters) => {
@@ -70,11 +79,15 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
         `)
         .eq('user_id', userId) // CRÍTICO: Filtrar por user_id
 
-      if (filters?.startDate) {
-        query = query.gte('transaction_date', filters.startDate)
-      }
-      if (filters?.endDate) {
-        query = query.lte('transaction_date', filters.endDate)
+      if (filters?.mesReferencia) {
+        query = query.eq('mes_referencia', filters.mesReferencia)
+      } else if (filters?.startDate || filters?.endDate) {
+        const { min, max } = mesReferenciaRangeFromDates(
+          filters.startDate || '1970-01-01',
+          filters.endDate || '2999-12-31'
+        )
+        if (filters.startDate) query = query.gte('mes_referencia', min)
+        if (filters.endDate) query = query.lte('mes_referencia', max)
       }
       if (filters?.categoryId && filters.categoryId !== 'all') {
         query = query.eq('category_id', filters.categoryId)
@@ -87,6 +100,9 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
       }
       if (filters?.search) {
         query = query.ilike('description', `%${filters.search}%`)
+      }
+      if (filters?.transactionType) {
+        query = query.eq('type', filters.transactionType)
       }
 
       const { data, error } = await query.order('transaction_date', { ascending: false })
@@ -147,6 +163,12 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
           amount: item.amount,
           description: item.description,
           transaction_date: item.transaction_date,
+          mes_referencia:
+            item.mes_referencia ??
+            inferMesReferencia(
+              item.transaction_date,
+              item.payment_method || 'cash'
+            ),
           type: (item.type === 'income' || item.type === 'expense') ? item.type : 'expense',
           payment_method: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(item.payment_method || ''))
             ? item.payment_method as PaymentMethod
@@ -180,12 +202,74 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
     }
   },
 
+  fetchIncomeTransactions: async (filters) => {
+    set({ incomesLoading: true, error: null })
+    try {
+      const supabase = createClient()
+
+      const authState = useAuthStore.getState()
+      let userId = authState.user?.id
+
+      if (!userId) {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user) {
+          throw new Error('Usuário não autenticado')
+        }
+        userId = session.user.id
+      }
+
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          category:categories(*)
+        `)
+        .eq('user_id', userId)
+        .eq('type', 'income')
+        .eq('mes_referencia', filters.mesReferencia)
+        .order('transaction_date', { ascending: false })
+
+      if (error) {
+        throw error
+      }
+
+      const typedIncomes: Transaction[] = (data || []).map((item: Record<string, unknown>): Transaction => ({
+        id: item.id as string,
+        user_id: item.user_id as string,
+        category_id: item.category_id as string,
+        amount: item.amount as number,
+        description: item.description as string,
+        transaction_date: item.transaction_date as string,
+        mes_referencia:
+          (item.mes_referencia as string) ??
+          inferMesReferencia(
+            item.transaction_date as string,
+            (item.payment_method as string) || 'cash'
+          ),
+        type: 'income',
+        payment_method: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes((item.payment_method as string) || ''))
+          ? (item.payment_method as PaymentMethod)
+          : 'cash',
+        created_at: (item.created_at as string) || new Date().toISOString(),
+        updated_at: (item.updated_at as string) || null,
+      }))
+
+      set({ incomeTransactions: typedIncomes })
+    } catch (error) {
+      console.error('[Transactions Store] ❌ Erro ao buscar receitas:', error)
+      set({ error: (error as Error).message, incomeTransactions: [] })
+    } finally {
+      set({ incomesLoading: false })
+    }
+  },
+
   addTransaction: async (transaction: {
     description: string
     amount: number
     type: 'income' | 'expense'
     category_id: string
     transaction_date: string
+    mes_referencia?: string
     user_id?: string
     expense_nature?: string | null
     installment_number?: number | null
@@ -250,6 +334,9 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
         type: validatedType, // ✅ Tipo validado e garantido
         category_id: transaction.category_id,
         transaction_date: transaction.transaction_date,
+        mes_referencia:
+          transaction.mes_referencia ??
+          inferMesReferencia(transaction.transaction_date, validatedPaymentMethod),
         user_id: userId,
         payment_method: validatedPaymentMethod,
         card_id: transaction.card_id || null,

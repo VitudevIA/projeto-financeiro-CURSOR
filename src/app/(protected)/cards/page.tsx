@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Plus, CreditCard, Edit, Trash2, Power, PowerOff } from 'lucide-react'
 import Link from 'next/link'
-import { useCardsStore } from '@/lib/stores/cards-store'
+import { useCardsStore, type Card as UserCard } from '@/lib/stores/cards-store'
 import { formatCurrency } from '@/utils/helpers'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -18,12 +18,22 @@ export default function CardsPage() {
 
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState<{ name: string; type: 'credit' | 'debit'; brand: string | null; last_digits: string | null; limit: number | null }>({
+  const [form, setForm] = useState<{
+    name: string
+    type: 'credit' | 'debit'
+    brand: string | null
+    last_digits: string | null
+    limit: number | null
+    closing_day: number
+    due_day: number
+  }>({
     name: '',
     type: 'credit',
     brand: null,
     last_digits: null,
     limit: null,
+    closing_day: 25,
+    due_day: 10,
   })
 
   useEffect(() => {
@@ -50,14 +60,16 @@ export default function CardsPage() {
     }
   }
 
-  const openEdit = (card: any) => {
+  const openEdit = (card: UserCard) => {
     setEditingId(card.id)
     setForm({
       name: card.name || '',
       type: (card.type === 'debit' ? 'debit' : 'credit'),
       brand: card.brand || null,
       last_digits: card.last_digits || null,
-      limit: card.limit ?? card.limit_amount ?? null,
+      limit: card.limit ?? null,
+      closing_day: card.closing_day ?? 25,
+      due_day: card.due_day ?? 10,
     })
     setIsEditOpen(true)
   }
@@ -73,12 +85,26 @@ export default function CardsPage() {
       return
     }
 
+    if (
+      !Number.isInteger(form.closing_day) ||
+      form.closing_day < 1 ||
+      form.closing_day > 31 ||
+      !Number.isInteger(form.due_day) ||
+      form.due_day < 1 ||
+      form.due_day > 31
+    ) {
+      toast.error('Dia de fechamento e vencimento devem estar entre 1 e 31')
+      return
+    }
+
     const updates: any = {
       name: form.name,
       type: form.type,
       brand: form.brand,
       last_digits: (form.last_digits || '')?.toString().replace(/\D/g, '').slice(0, 4) || null,
       limit: form.type === 'credit' ? form.limit : null,
+      closing_day: form.closing_day,
+      due_day: form.due_day,
     }
     const { error } = await updateCard(editingId, updates)
     if (error) {
@@ -238,6 +264,121 @@ export default function CardsPage() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar cartão</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium">Nome do cartão *</label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Tipo *</label>
+              <Select
+                value={form.type}
+                onValueChange={(value: 'credit' | 'debit') =>
+                  setForm((f) => ({ ...f, type: value }))
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="credit">Crédito</SelectItem>
+                  <SelectItem value="debit">Débito</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium">Dia de fechamento *</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={form.closing_day}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      closing_day: parseInt(e.target.value, 10) || 1,
+                    }))
+                  }
+                  className="mt-1"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Dia de vencimento *</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={form.due_day}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      due_day: parseInt(e.target.value, 10) || 1,
+                    }))
+                  }
+                  className="mt-1"
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Bandeira</label>
+              <Input
+                value={form.brand || ''}
+                onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value || null }))}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Últimos 4 dígitos</label>
+              <Input
+                value={form.last_digits || ''}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    last_digits: e.target.value.replace(/\D/g, '').slice(0, 4) || null,
+                  }))
+                }
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Limite (R$)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.type === 'credit' ? (form.limit ?? '') : ''}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    limit: parseFloat(e.target.value) || 0,
+                  }))
+                }
+                disabled={form.type !== 'credit'}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEditSave}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

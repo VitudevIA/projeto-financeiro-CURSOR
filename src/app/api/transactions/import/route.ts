@@ -11,6 +11,19 @@ import * as XLSX from 'xlsx'
 import { extractTextFromPDF, parseCreditCardBill, ExtractedTransaction } from '@/utils/pdf-parser'
 import { recognizeCategory, recognizeCategoryLegacy, type Category } from '@/utils/category-recognition'
 import { TransactionDeduplicationService, type TransactionForDeduplication } from '@/services/transaction-deduplication-service'
+import { inferMesReferencia, isValidMesReferencia } from '@/utils/mes-referencia'
+
+function resolveMesReferencia(
+  transactionDate: string,
+  paymentMethod: string,
+  explicit?: string | null
+): string {
+  const trimmed = explicit != null ? String(explicit).trim() : ''
+  if (trimmed && isValidMesReferencia(trimmed)) {
+    return trimmed
+  }
+  return inferMesReferencia(transactionDate, paymentMethod)
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -671,6 +684,7 @@ export async function POST(request: NextRequest) {
             // IMPORTANTE: card_id deve ser null para métodos que não são crédito/débito
             const finalCardIdForInstallment = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
             
+            const installmentDateStr = installmentDate.toISOString().split('T')[0]
             const { error: insertError } = await supabase.from('transactions').insert([
               {
                 user_id: user.id,
@@ -678,7 +692,12 @@ export async function POST(request: NextRequest) {
                 amount: installmentAmount,
                 type: 'expense',
                 category_id: categoryId,
-                transaction_date: installmentDate.toISOString().split('T')[0],
+                transaction_date: installmentDateStr,
+                mes_referencia: resolveMesReferencia(
+                  installmentDateStr,
+                  validatedMethod,
+                  transaction.mes_referencia
+                ),
                 payment_method: validatedMethod,
                 card_id: finalCardIdForInstallment, // Null para métodos que não são cartão
                 expense_nature: 'installment',
@@ -735,6 +754,7 @@ export async function POST(request: NextRequest) {
           // IMPORTANTE: card_id deve ser null para métodos que não são crédito/débito
           const finalCardIdForInsert = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
           
+          const transactionDateStr = formatDate(String(transaction.data))
           const { error: insertError } = await supabase.from('transactions').insert([
             {
               user_id: user.id,
@@ -742,7 +762,12 @@ export async function POST(request: NextRequest) {
               amount: finalAmount,
               type: 'expense',
               category_id: categoryId,
-              transaction_date: formatDate(String(transaction.data)),
+              transaction_date: transactionDateStr,
+              mes_referencia: resolveMesReferencia(
+                transactionDateStr,
+                validatedMethod,
+                transaction.mes_referencia
+              ),
               payment_method: validatedMethod,
               card_id: finalCardIdForInsert, // Null para métodos que não são cartão
               expense_nature: validatedExpenseNature,

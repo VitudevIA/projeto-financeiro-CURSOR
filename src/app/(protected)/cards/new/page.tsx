@@ -19,6 +19,8 @@ interface CardFormData {
   brand: string
   last_digits: string
   limit: number
+  closing_day: number
+  due_day: number
 }
 
 export default function NewCardPage() {
@@ -32,6 +34,8 @@ export default function NewCardPage() {
     brand: '',
     last_digits: '',
     limit: 0,
+    closing_day: 25,
+    due_day: 10,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,6 +55,24 @@ export default function NewCardPage() {
 
       if (formData.type === 'credit' && (!formData.limit || formData.limit <= 0)) {
         toast.error('Informe um limite válido para cartão de crédito')
+        return
+      }
+
+      if (
+        !Number.isInteger(formData.closing_day) ||
+        formData.closing_day < 1 ||
+        formData.closing_day > 31
+      ) {
+        toast.error('Informe o dia de fechamento (1 a 31)')
+        return
+      }
+
+      if (
+        !Number.isInteger(formData.due_day) ||
+        formData.due_day < 1 ||
+        formData.due_day > 31
+      ) {
+        toast.error('Informe o dia de vencimento (1 a 31)')
         return
       }
 
@@ -111,7 +133,9 @@ export default function NewCardPage() {
         type: formData.type,
         brand: formData.brand || null,
         last_digits: normalizedDigits || null,
-        limit: formData.type === 'credit' ? formData.limit : null, // ✅ Usa 'limit', não 'limit_amount'
+        limit: formData.type === 'credit' ? formData.limit : null,
+        closing_day: formData.closing_day,
+        due_day: formData.due_day,
         user_id: user.id,
         is_active: true,
       }
@@ -223,6 +247,35 @@ export default function NewCardPage() {
                 value={formData.last_digits}
                 onChange={(e) => handleInputChange('last_digits', e.target.value.replace(/\D/g, '').slice(0, 4))}
                 className="mt-1"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label htmlFor="closing_day" className="block text-sm font-medium text-gray-700">Dia de fechamento *</label>
+              <Input
+                id="closing_day"
+                type="number"
+                min={1}
+                max={31}
+                value={formData.closing_day}
+                onChange={(e) => handleInputChange('closing_day', parseInt(e.target.value, 10) || 1)}
+                className="mt-1"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="due_day" className="block text-sm font-medium text-gray-700">Dia de vencimento *</label>
+              <Input
+                id="due_day"
+                type="number"
+                min={1}
+                max={31}
+                value={formData.due_day}
+                onChange={(e) => handleInputChange('due_day', parseInt(e.target.value, 10) || 1)}
+                className="mt-1"
+                required
               />
             </div>
           </div>

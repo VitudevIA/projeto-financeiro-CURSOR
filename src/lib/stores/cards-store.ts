@@ -1,26 +1,73 @@
 import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
 
-// Interface correta baseada na estrutura real da tabela cards
-interface Card {
+const BILLING_DAY_MIN = 1
+const BILLING_DAY_MAX = 31
+
+export interface Card {
   id: string
   user_id: string
-  limit: number | null  // ✅ CORRETO: a tabela usa 'limit', não 'limit_amount'
+  limit: number | null
   is_active: boolean
-  created_at: string | null   // Pode ser null do banco
-  updated_at: string | null    // Pode ser null do banco
+  created_at: string | null
+  updated_at: string | null
   name: string
   type: string
   brand: string | null
   last_digits: string | null
+  closing_day: number
+  due_day: number
+}
+
+export type CardInput = Omit<Card, 'id' | 'created_at' | 'updated_at'>
+
+export function validateCardBillingDays(
+  closing_day: number | null | undefined,
+  due_day: number | null | undefined
+): string | null {
+  if (closing_day == null || due_day == null) {
+    return 'Dia de fechamento e dia de vencimento são obrigatórios'
+  }
+  if (
+    !Number.isInteger(closing_day) ||
+    closing_day < BILLING_DAY_MIN ||
+    closing_day > BILLING_DAY_MAX
+  ) {
+    return `Dia de fechamento deve ser um número entre ${BILLING_DAY_MIN} e ${BILLING_DAY_MAX}`
+  }
+  if (
+    !Number.isInteger(due_day) ||
+    due_day < BILLING_DAY_MIN ||
+    due_day > BILLING_DAY_MAX
+  ) {
+    return `Dia de vencimento deve ser um número entre ${BILLING_DAY_MIN} e ${BILLING_DAY_MAX}`
+  }
+  return null
+}
+
+function mapCardFromDb(card: Record<string, unknown>): Card {
+  return {
+    id: card.id as string,
+    user_id: card.user_id as string,
+    name: card.name as string,
+    type: card.type as string,
+    brand: (card.brand as string) ?? null,
+    last_digits: (card.last_digits as string) ?? null,
+    limit: (card.limit_amount as number) ?? (card.limit as number) ?? null,
+    is_active: (card.is_active as boolean) ?? true,
+    closing_day: Number(card.closing_day ?? 25),
+    due_day: Number(card.due_day ?? 10),
+    created_at: (card.created_at as string) ?? new Date().toISOString(),
+    updated_at: (card.updated_at as string) ?? new Date().toISOString(),
+  }
 }
 
 interface CardsState {
   cards: Card[]
   loading: boolean
   fetchCards: () => Promise<void>
-  addCard: (card: Omit<Card, 'id' | 'created_at' | 'updated_at'>) => Promise<{ error: string | null }>
-  updateCard: (id: string, updates: Partial<Card>) => Promise<{ error: string | null }>
+  addCard: (card: CardInput) => Promise<{ error: string | null }>
+  updateCard: (id: string, updates: Partial<CardInput>) => Promise<{ error: string | null }>
   deleteCard: (id: string) => Promise<{ error: string | null }>
   toggleCardStatus: (id: string) => Promise<{ error: string | null }>
 }
@@ -44,15 +91,9 @@ export const useCardsStore = create<CardsState>((set, get) => ({
         return
       }
 
-      // Garante valores padrão corretos
-      // Mapeia limit_amount (do tipo Supabase) para limit (nosso tipo Card)
-      const cardsWithDefaults: Card[] = (data || []).map((card: any): Card => ({
-        ...card,
-        limit: card.limit_amount ?? card.limit ?? null, // Mapeia de limit_amount para limit
-        is_active: card.is_active ?? true, // Garante que sempre seja boolean (default true)
-        created_at: card.created_at ?? new Date().toISOString(),
-        updated_at: card.updated_at ?? new Date().toISOString(),
-      }))
+      const cardsWithDefaults: Card[] = (data || []).map((card) =>
+        mapCardFromDb(card as Record<string, unknown>)
+      )
 
       set({ cards: cardsWithDefaults, loading: false })
     } catch (error) {
@@ -62,25 +103,25 @@ export const useCardsStore = create<CardsState>((set, get) => ({
   },
 
   addCard: async (cardData) => {
+    const billingError = validateCardBillingDays(cardData.closing_day, cardData.due_day)
+    if (billingError) {
+      return { error: billingError }
+    }
+
     try {
       const supabase = createClient()
-      
-      // Prepara dados para insert - o banco usa 'limit', mas os tipos Supabase esperam 'limit_amount'
-      // Como o banco real tem 'limit', vamos usar um cast para contornar a validação de tipos
-      const insertData: any = { ...cardData }
-      // Remove 'limit_amount' se existir (do nosso tipo interno)
+
+      const insertData: Record<string, unknown> = { ...cardData }
       if ('limit_amount' in insertData) {
         delete insertData.limit_amount
       }
-      // Garante que 'limit' seja null para cartões de débito
       if (insertData.type === 'debit') {
         insertData.limit = null
       }
-      
-      // Usa insert com tipo any para contornar a diferença entre limit (banco) e limit_amount (tipos Supabase)
+
       const { data, error } = await supabase
         .from('cards')
-        .insert([insertData] as any)
+        .insert([insertData] as never)
         .select()
         .single()
 
@@ -89,22 +130,8 @@ export const useCardsStore = create<CardsState>((set, get) => ({
         return { error: error.message }
       }
 
-      // Add to local state
-      // Mapeia limit_amount (do tipo Supabase) para limit (nosso tipo Card)
       const { cards } = get()
-      const insertedCardData = data as any
-      const newCard: Card = {
-        id: data.id,
-        user_id: data.user_id,
-        name: data.name,
-        type: data.type,
-        brand: data.brand,
-        last_digits: data.last_digits,
-        limit: insertedCardData.limit_amount ?? insertedCardData.limit ?? null, // Mapeia de limit_amount para limit
-        is_active: data.is_active ?? true,
-        created_at: data.created_at ?? new Date().toISOString(),
-        updated_at: data.updated_at ?? new Date().toISOString(),
-      }
+      const newCard = mapCardFromDb(data as Record<string, unknown>)
       set({ cards: [newCard, ...cards] })
 
       return { error: null }
@@ -115,21 +142,30 @@ export const useCardsStore = create<CardsState>((set, get) => ({
   },
 
   updateCard: async (id, updates) => {
+    const { cards } = get()
+    const existing = cards.find((c) => c.id === id)
+    if (!existing) {
+      return { error: 'Cartão não encontrado' }
+    }
+
+    const closing_day = updates.closing_day ?? existing.closing_day
+    const due_day = updates.due_day ?? existing.due_day
+    const billingError = validateCardBillingDays(closing_day, due_day)
+    if (billingError) {
+      return { error: billingError }
+    }
+
     try {
       const supabase = createClient()
-      
-      // Prepara dados para update - o banco usa 'limit', mas os tipos Supabase esperam 'limit_amount'
-      // Como o banco real tem 'limit', vamos usar um cast para contornar a validação de tipos
-      const updateData: any = { ...updates }
-      // Remove 'limit_amount' se existir (do nosso tipo interno)
+
+      const updateData: Record<string, unknown> = { ...updates, closing_day, due_day }
       if ('limit_amount' in updateData) {
         delete updateData.limit_amount
       }
-      
-      // Usa update com tipo any para contornar a diferença entre limit (banco) e limit_amount (tipos Supabase)
+
       const { data, error } = await supabase
         .from('cards')
-        .update(updateData as any)
+        .update(updateData as never)
         .eq('id', id)
         .select()
         .single()
@@ -139,23 +175,9 @@ export const useCardsStore = create<CardsState>((set, get) => ({
         return { error: error.message }
       }
 
-      // Update local state
-      // Mapeia limit_amount (do tipo Supabase) para limit (nosso tipo Card)
-      const { cards } = get()
-      const updatedCardData = data as any
-      const updatedCards: Card[] = cards.map(card => 
-        card.id === id ? { 
-          id: data.id,
-          user_id: data.user_id,
-          name: data.name,
-          type: data.type,
-          brand: data.brand,
-          last_digits: data.last_digits,
-          limit: updatedCardData.limit_amount ?? updatedCardData.limit ?? null, // Mapeia de limit_amount para limit
-          is_active: data.is_active ?? card.is_active ?? true,
-          created_at: data.created_at ?? card.created_at ?? new Date().toISOString(),
-          updated_at: data.updated_at ?? new Date().toISOString(),
-        } : card
+      const updatedCard = mapCardFromDb(data as Record<string, unknown>)
+      const updatedCards: Card[] = cards.map((card) =>
+        card.id === id ? updatedCard : card
       )
       set({ cards: updatedCards })
 
@@ -169,19 +191,14 @@ export const useCardsStore = create<CardsState>((set, get) => ({
   deleteCard: async (id) => {
     try {
       const supabase = createClient()
-      const { error } = await supabase
-        .from('cards')
-        .delete()
-        .eq('id', id)
+      const { error } = await supabase.from('cards').delete().eq('id', id)
 
       if (error) {
         return { error: error.message }
       }
 
-      // Remove from local state
       const { cards } = get()
-      const filteredCards = cards.filter(card => card.id !== id)
-      set({ cards: filteredCards })
+      set({ cards: cards.filter((card) => card.id !== id) })
 
       return { error: null }
     } catch (error) {
@@ -193,7 +210,7 @@ export const useCardsStore = create<CardsState>((set, get) => ({
     try {
       const supabase = createClient()
       const { cards } = get()
-      const card = cards.find(c => c.id === id)
+      const card = cards.find((c) => c.id === id)
       if (!card) {
         return { error: 'Cartão não encontrado' }
       }
@@ -207,11 +224,11 @@ export const useCardsStore = create<CardsState>((set, get) => ({
         return { error: error.message }
       }
 
-      // Update local state
-      const updatedCards = cards.map(c => 
-        c.id === id ? { ...c, is_active: !c.is_active } : c
-      )
-      set({ cards: updatedCards })
+      set({
+        cards: cards.map((c) =>
+          c.id === id ? { ...c, is_active: !c.is_active } : c
+        ),
+      })
 
       return { error: null }
     } catch (error) {

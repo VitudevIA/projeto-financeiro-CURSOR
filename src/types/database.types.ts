@@ -25,6 +25,8 @@ export interface Transaction {
   amount: number
   description: string
   transaction_date: string
+  /** Mês de competência (YYYY-MM) — usado no Total Gasto do dashboard */
+  mes_referencia: string
   type: 'income' | 'expense'
   payment_method: 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
   created_at: string

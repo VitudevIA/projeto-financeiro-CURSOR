@@ -2,6 +2,12 @@ import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
 import type { AppUser } from '@/types/user_types'
 import type { DashboardFilters } from '@/components/dashboard/dashboard-filters'
+import type { CardBillingInfo } from '@/utils/mes-referencia'
+import {
+  expandedTransactionDateRangeForMesReferencias,
+  isTransactionInMesReferenciaRange,
+  mesReferenciaRangeFromDates,
+} from '@/utils/mes-referencia'
 
 // Defina os tipos localmente
 interface DashboardKPIs {
@@ -75,6 +81,119 @@ const ensureNumber = (value: any): number => {
   return 0
 }
 
+function buildCardBillingMap(
+  cards: Array<{ id: string; closing_day: number; type?: string }>
+): Map<string, CardBillingInfo> {
+  const map = new Map<string, CardBillingInfo>()
+  cards.forEach((card) => {
+    map.set(card.id, { closing_day: card.closing_day, type: card.type })
+  })
+  return map
+}
+
+function filterByCompetencia(
+  transactions: any[] | null,
+  minMesRef: string,
+  maxMesRef: string,
+  cardMap: Map<string, CardBillingInfo>
+): any[] {
+  return (transactions || []).filter((t) =>
+    isTransactionInMesReferenciaRange(t, minMesRef, maxMesRef, cardMap)
+  )
+}
+
+function aggregateDashboardFromTransactions(
+  transactions: any[],
+  start: string,
+  end: string
+) {
+  let totalIncome = 0
+  let totalSpent = 0
+
+  transactions.forEach((transaction: any) => {
+    const amount = ensureNumber(transaction.amount)
+    if (transaction.type === 'income') {
+      totalIncome += amount
+    } else if (transaction.type === 'expense') {
+      totalSpent += amount
+    }
+  })
+
+  const now = new Date()
+  const startDateObj = new Date(start)
+  const endDateObj = new Date(end)
+  const daysInMonth =
+    Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  const daysPassed = Math.min(
+    Math.ceil((now.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1,
+    daysInMonth
+  )
+
+  const dailyAverage = daysPassed > 0 ? totalSpent / daysPassed : 0
+  const monthlyProjection = dailyAverage * daysInMonth
+  const availableBalance = totalIncome - totalSpent
+  const daysOfReserve = dailyAverage > 0 ? Math.floor(availableBalance / dailyAverage) : 0
+
+  const timeSeriesMap = new Map<string, number>()
+  const currentDate = new Date(startDateObj)
+  while (currentDate <= endDateObj) {
+    const dateStr = currentDate.toISOString().split('T')[0]
+    timeSeriesMap.set(dateStr, 0)
+    currentDate.setDate(currentDate.getDate() + 1)
+  }
+
+  transactions.forEach((transaction: any) => {
+    if (transaction.type === 'expense') {
+      const amount = ensureNumber(transaction.amount)
+      const date = transaction.transaction_date
+      if (date) {
+        const current = timeSeriesMap.get(date) || 0
+        timeSeriesMap.set(date, current + amount)
+      }
+    }
+  })
+
+  const timeSeriesData: TimeSeriesData[] = Array.from(timeSeriesMap.entries())
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .map(([date, amount]) => ({
+      date,
+      amount: Number(amount.toFixed(2)),
+      label: new Date(date).toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+      }),
+    }))
+
+  const categoryMap = new Map<string, number>()
+  transactions.forEach((transaction: any) => {
+    if (transaction.type === 'expense') {
+      const amount = ensureNumber(transaction.amount)
+      const categoryName = transaction.category?.name || 'Sem Categoria'
+      const current = categoryMap.get(categoryName) || 0
+      categoryMap.set(categoryName, current + amount)
+    }
+  })
+
+  const categoryData: ChartData[] = Array.from(categoryMap.entries())
+    .map(([name, value], index) => ({
+      name,
+      value: Number(value.toFixed(2)),
+      color: getCategoryColor(index),
+    }))
+    .sort((a, b) => b.value - a.value)
+
+  return {
+    totalIncome,
+    totalSpent,
+    dailyAverage,
+    monthlyProjection,
+    availableBalance,
+    daysOfReserve,
+    timeSeriesData,
+    categoryData,
+  }
+}
+
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   kpis: null,
   timeSeriesData: [],
@@ -109,23 +228,43 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       const cardId = filters?.cardId
       const compareMode = filters?.compareMode || false
 
-      console.log(`📅 Período: ${start} até ${end}`)
+      const { min: minMesRef, max: maxMesRef } = mesReferenciaRangeFromDates(start, end)
+      const { start: fetchStart, end: fetchEnd } =
+        expandedTransactionDateRangeForMesReferencias(minMesRef, maxMesRef)
+      console.log(`📅 Período (competência): ${minMesRef} até ${maxMesRef}`)
       if (categoryId) console.log(`🏷️ Categoria filtrada: ${categoryId}`)
       if (cardId) console.log(`💳 Cartão filtrado: ${cardId}`)
       if (compareMode) console.log(`📊 Modo comparação ativado`)
 
-      // Fetch transactions para o período
       const supabase = createClient()
+
+      const { data: cardsData, error: cardsError } = await supabase
+        .from('cards')
+        .select('id, closing_day, due_day, type')
+        .eq('user_id', user.id)
+
+      if (cardsError) {
+        console.warn('Erro ao buscar cartões para competência:', cardsError)
+      }
+
+      const cardMap = buildCardBillingMap(
+        (cardsData || []).map((c) => ({
+          id: c.id,
+          closing_day: Number(c.closing_day ?? 25),
+          type: c.type ?? undefined,
+        }))
+      )
+
       let query = supabase
         .from('transactions')
         .select(`
           *,
           category:categories(*),
-          card:cards(*)
+          card:cards(id, closing_day, due_day, type)
         `)
         .eq('user_id', user.id)
-        .gte('transaction_date', start)
-        .lte('transaction_date', end)
+        .gte('transaction_date', fetchStart)
+        .lte('transaction_date', fetchEnd)
       
       // Aplica filtros adicionais
       if (categoryId) {
@@ -160,6 +299,17 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         return
       }
 
+      const periodTransactions = filterByCompetencia(
+        transactions,
+        minMesRef,
+        maxMesRef,
+        cardMap
+      )
+
+      console.log(
+        `📊 Dashboard: ${periodTransactions.length} transações na competência ${minMesRef}–${maxMesRef} (de ${transactions?.length || 0} no intervalo de datas)`
+      )
+
       // Buscar orçamentos do usuário para cálculo mais preciso
       const { data: budgets, error: budgetsError } = await supabase
         .from('budgets')
@@ -173,40 +323,20 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         // Continua sem orçamentos
       }
 
-      // Calcular KPIs diferenciando receitas e despesas
-      let totalIncome = 0
-      let totalSpent = 0
-      
-      transactions?.forEach((transaction: any) => {
-        const amount = ensureNumber(transaction.amount)
-        
-        if (transaction.type === 'income') {
-          totalIncome += amount
-        } else if (transaction.type === 'expense') {
-          totalSpent += amount
-        }
-      })
-      
-      // Saldo disponível = Receitas - Despesas (calculado a partir das transações)
-      const availableBalance = totalIncome - totalSpent
-      
-      const startDateObj = new Date(start)
-      const endDateObj = new Date(end)
-      const daysInMonth = Math.ceil((endDateObj.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1
-      const daysPassed = Math.min(
-        Math.ceil((now.getTime() - startDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1,
-        daysInMonth
-      )
-      
-      const dailyAverage = daysPassed > 0 ? totalSpent / daysPassed : 0
-      const monthlyProjection = dailyAverage * daysInMonth
+      const aggregated = aggregateDashboardFromTransactions(periodTransactions, start, end)
+      const {
+        totalIncome,
+        totalSpent,
+        dailyAverage,
+        monthlyProjection,
+        availableBalance,
+        daysOfReserve,
+        timeSeriesData,
+        categoryData,
+      } = aggregated
 
-      // Calcular uso do orçamento
       const totalBudget = budgets?.reduce((sum: number, b: any) => sum + b.amount, 0) || 0
       const budgetUsedPercentage = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0
-
-      // Calcular dias de reserva (baseado no saldo disponível vs média diária de despesas)
-      const daysOfReserve = dailyAverage > 0 ? Math.floor(availableBalance / dailyAverage) : 0
 
       const kpis: DashboardKPIs = {
         totalSpent,
@@ -217,58 +347,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         daysOfReserve,
       }
 
-      // Gerar dados de série temporal
-      const timeSeriesMap = new Map<string, number>()
-      
-      // Preencher todos os dias do período para evitar gaps no gráfico
-      const currentDate = new Date(startDateObj)
-      while (currentDate <= endDateObj) {
-        const dateStr = currentDate.toISOString().split('T')[0]
-        timeSeriesMap.set(dateStr, 0)
-        currentDate.setDate(currentDate.getDate() + 1)
-      }
-
-      // Adicionar valores reais das transações (apenas despesas para o gráfico de gastos)
-      transactions?.forEach((transaction: any) => {
-        if (transaction.type === 'expense') {
-          const amount = ensureNumber(transaction.amount)
-          const date = transaction.transaction_date
-          if (date) {
-            const current = timeSeriesMap.get(date) || 0
-            timeSeriesMap.set(date, current + amount)
-          }
-        }
-      })
-
-      const timeSeriesData: TimeSeriesData[] = Array.from(timeSeriesMap.entries())
-        .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-        .map(([date, amount]) => ({
-          date,
-          amount: Number(amount.toFixed(2)),
-          label: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-        }))
-
-      // Gerar dados de categoria (apenas despesas)
-      const categoryMap = new Map<string, number>()
-      transactions?.forEach((transaction: any) => {
-        if (transaction.type === 'expense') {
-          const amount = ensureNumber(transaction.amount)
-          const categoryName = transaction.category?.name || 'Sem Categoria'
-          const current = categoryMap.get(categoryName) || 0
-          categoryMap.set(categoryName, current + amount)
-        }
-      })
-
-      const categoryData: ChartData[] = Array.from(categoryMap.entries())
-        .map(([name, value], index) => ({
-          name,
-          value: Number(value.toFixed(2)),
-          color: getCategoryColor(index)
-        }))
-        .sort((a, b) => b.value - a.value) // Ordenar por valor decrescente
-
-      // Pegar top 5 transações (ordenado por valor absoluto)
-      const topTransactions = transactions
+      const topTransactions = periodTransactions
         ?.filter((t: any) => {
           const amount = ensureNumber(t.amount)
           return amount && Math.abs(amount) > 0
@@ -288,7 +367,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         }) || []
 
       // Pegar transações recentes (últimas 10, ordenadas por data decrescente)
-      const recentTransactions = transactions
+      const recentTransactions = periodTransactions
         ?.filter((t: any) => {
           const amount = ensureNumber(t.amount)
           return amount && Math.abs(amount) > 0
@@ -313,16 +392,24 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       if (compareMode && filters?.compareStartDate && filters?.compareEndDate) {
         console.log(`📊 Buscando dados de comparação: ${filters.compareStartDate} até ${filters.compareEndDate}`)
         
+        const compareMes = mesReferenciaRangeFromDates(
+          filters.compareStartDate,
+          filters.compareEndDate
+        )
+        const compareDateRange = expandedTransactionDateRangeForMesReferencias(
+          compareMes.min,
+          compareMes.max
+        )
         let compareQuery = supabase
           .from('transactions')
           .select(`
             *,
             category:categories(*),
-            card:cards(*)
+            card:cards(id, closing_day, due_day, type)
           `)
           .eq('user_id', user.id)
-          .gte('transaction_date', filters.compareStartDate)
-          .lte('transaction_date', filters.compareEndDate)
+          .gte('transaction_date', compareDateRange.start)
+          .lte('transaction_date', compareDateRange.end)
         
         if (categoryId) {
           compareQuery = compareQuery.eq('category_id', categoryId)
@@ -336,86 +423,30 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
           .order('transaction_date', { ascending: true })
         
         if (!compareError && compareTransactions) {
-          // Calcula KPIs do período comparado
-          let compareTotalIncome = 0
-          let compareTotalSpent = 0
-          
-          compareTransactions.forEach((transaction: any) => {
-            const amount = ensureNumber(transaction.amount)
-            if (transaction.type === 'income') {
-              compareTotalIncome += amount
-            } else if (transaction.type === 'expense') {
-              compareTotalSpent += amount
-            }
-          })
-          
-          const compareAvailableBalance = compareTotalIncome - compareTotalSpent
-          const compareStartDateObj = new Date(filters.compareStartDate)
-          const compareEndDateObj = new Date(filters.compareEndDate)
-          const compareDaysInPeriod = Math.ceil((compareEndDateObj.getTime() - compareStartDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1
-          const compareDaysPassed = Math.min(
-            Math.ceil((now.getTime() - compareStartDateObj.getTime()) / (1000 * 60 * 60 * 24)) + 1,
-            compareDaysInPeriod
+          const comparePeriodTransactions = filterByCompetencia(
+            compareTransactions,
+            compareMes.min,
+            compareMes.max,
+            cardMap
           )
-          
-          const compareDailyAverage = compareDaysPassed > 0 ? compareTotalSpent / compareDaysPassed : 0
-          const compareMonthlyProjection = compareDailyAverage * compareDaysInPeriod
-          
+
+          const compareAggregated = aggregateDashboardFromTransactions(
+            comparePeriodTransactions,
+            filters.compareStartDate,
+            filters.compareEndDate
+          )
+
           const compareKpis: DashboardKPIs = {
-            totalSpent: compareTotalSpent,
-            dailyAverage: Number(compareDailyAverage.toFixed(2)),
-            monthlyProjection: Number(compareMonthlyProjection.toFixed(2)),
-            budgetUsedPercentage: 0, // Não calculamos para comparação
-            availableBalance: Number(compareAvailableBalance.toFixed(2)),
-            daysOfReserve: compareDailyAverage > 0 ? Math.floor(compareAvailableBalance / compareDailyAverage) : 0,
+            totalSpent: compareAggregated.totalSpent,
+            dailyAverage: Number(compareAggregated.dailyAverage.toFixed(2)),
+            monthlyProjection: Number(compareAggregated.monthlyProjection.toFixed(2)),
+            budgetUsedPercentage: 0,
+            availableBalance: Number(compareAggregated.availableBalance.toFixed(2)),
+            daysOfReserve: compareAggregated.daysOfReserve,
           }
-          
-          // Time series do período comparado
-          const compareTimeSeriesMap = new Map<string, number>()
-          const compareCurrentDate = new Date(compareStartDateObj)
-          while (compareCurrentDate <= compareEndDateObj) {
-            const dateStr = compareCurrentDate.toISOString().split('T')[0]
-            compareTimeSeriesMap.set(dateStr, 0)
-            compareCurrentDate.setDate(compareCurrentDate.getDate() + 1)
-          }
-          
-          compareTransactions.forEach((transaction: any) => {
-            if (transaction.type === 'expense') {
-              const amount = ensureNumber(transaction.amount)
-              const date = transaction.transaction_date
-              if (date) {
-                const current = compareTimeSeriesMap.get(date) || 0
-                compareTimeSeriesMap.set(date, current + amount)
-              }
-            }
-          })
-          
-          const compareTimeSeriesData: TimeSeriesData[] = Array.from(compareTimeSeriesMap.entries())
-            .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
-            .map(([date, amount]) => ({
-              date,
-              amount: Number(amount.toFixed(2)),
-              label: new Date(date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-            }))
-          
-          // Categorias do período comparado
-          const compareCategoryMap = new Map<string, number>()
-          compareTransactions.forEach((transaction: any) => {
-            if (transaction.type === 'expense') {
-              const amount = ensureNumber(transaction.amount)
-              const categoryName = transaction.category?.name || 'Sem Categoria'
-              const current = compareCategoryMap.get(categoryName) || 0
-              compareCategoryMap.set(categoryName, current + amount)
-            }
-          })
-          
-          const compareCategoryData: ChartData[] = Array.from(compareCategoryMap.entries())
-            .map(([name, value], index) => ({
-              name,
-              value: Number(value.toFixed(2)),
-              color: getCategoryColor(index)
-            }))
-            .sort((a, b) => b.value - a.value)
+
+          const compareTimeSeriesData = compareAggregated.timeSeriesData
+          const compareCategoryData = compareAggregated.categoryData
           
           comparisonData = {
             currentPeriod: {
@@ -433,7 +464,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
       }
 
       console.log('✅ Dashboard: Dados carregados com sucesso')
-      console.log(`📈 KPIs: ${transactions?.length || 0} transações processadas`)
+      console.log(`📈 KPIs: ${periodTransactions.length} transações na competência`)
       console.log(`💰 Receitas: R$ ${totalIncome.toFixed(2)} | Despesas: R$ ${totalSpent.toFixed(2)} | Saldo: R$ ${availableBalance.toFixed(2)}`)
 
       set({
@@ -442,7 +473,7 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
         categoryData,
         topTransactions,
         recentTransactions,
-        totalTransactions: transactions?.length || 0,
+        totalTransactions: periodTransactions.length,
         comparisonData,
         loading: false,
         error: null

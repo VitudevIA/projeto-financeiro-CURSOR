@@ -375,6 +375,8 @@ export function ImportTransactionsModal({
               <li><strong>CSV/XLSX:</strong> Baixe o modelo e preencha com suas despesas</li>
               <li><strong>CSV/XLSX:</strong> Mantenha o formato original (não altere as colunas)</li>
               <li><strong>CSV/XLSX:</strong> Data no formato: AAAA-MM-DD (ex: 2025-01-15)</li>
+              <li><strong>CSV/XLSX:</strong> Coluna opcional <code>mes_referencia</code> (AAAA-MM). Se vazia: crédito → mês seguinte; PIX/débito → mês da data</li>
+              <li><strong>PDF:</strong> Mês de referência inferido automaticamente (editável depois em Transações)</li>
               <li><strong>CSV/XLSX:</strong> Valor em número decimal (ex: 150.50)</li>
               <li><strong>CSV/XLSX:</strong> Método de pagamento: credit, debit, cash, pix ou boleto</li>
               <li><strong>PDF:</strong> Envie a fatura do seu cartão de crédito em PDF</li>

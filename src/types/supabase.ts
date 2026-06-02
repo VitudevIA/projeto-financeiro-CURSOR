@@ -95,7 +95,9 @@ export type Database = {
       cards: {
         Row: {
           brand: string | null
+          closing_day: number
           created_at: string | null
+          due_day: number
           id: string
           is_active: boolean | null
           last_digits: string | null
@@ -107,7 +109,9 @@ export type Database = {
         }
         Insert: {
           brand?: string | null
+          closing_day: number
           created_at?: string | null
+          due_day: number
           id?: string
           is_active?: boolean | null
           last_digits?: string | null
@@ -119,7 +123,9 @@ export type Database = {
         }
         Update: {
           brand?: string | null
+          closing_day?: number
           created_at?: string | null
+          due_day?: number
           id?: string
           is_active?: boolean | null
           last_digits?: string | null
@@ -234,6 +240,7 @@ export type Database = {
           recurring_type: string | null
           total_installments: number | null
           transaction_date: string
+          mes_referencia: string
           type: string
           updated_at: string | null
           user_id: string
@@ -253,6 +260,7 @@ export type Database = {
           recurring_type?: string | null
           total_installments?: number | null
           transaction_date: string
+          mes_referencia?: string
           type: string
           updated_at?: string | null
           user_id: string
@@ -272,6 +280,7 @@ export type Database = {
           recurring_type?: string | null
           total_installments?: number | null
           transaction_date?: string
+          mes_referencia?: string
           type?: string
           updated_at?: string | null
           user_id?: string

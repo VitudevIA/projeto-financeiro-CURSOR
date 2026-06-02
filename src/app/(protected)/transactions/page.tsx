@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
+import { useRecurringIncomesStore } from '@/lib/stores/recurring-incomes-store'
 import { useCardsStore } from '@/lib/stores/cards-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
 import { Button } from '@/components/ui/button'
@@ -15,23 +16,89 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { ImportTransactionsModal } from '@/components/forms/import-transactions-modal'
 import { Checkbox } from '@/components/ui/checkbox'
-import type { Transaction } from '@/types/database.types'
+import type { RecurringIncome, Transaction } from '@/types/database.types'
+import { MonthYearPicker } from '@/components/dashboard/month-year-picker'
+import {
+  formatMesReferenciaLabel,
+  getCurrentMesReferencia,
+  getMonthDateRange,
+} from '@/utils/mes-referencia'
+
+type TransactionListFilters = {
+  mesReferencia: string
+  periodMonth: number
+  periodYear: number
+  categoryId: string
+  cardId: string
+  paymentMethod: 'all' | 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
+  search: string
+}
+
+function recurringIncomeTotalForMesReferencia(
+  incomes: RecurringIncome[],
+  mesReferencia: string,
+  provisionedTransactions: Transaction[]
+): number {
+  const [year, month] = mesReferencia.split('-').map(Number)
+  const monthStart = new Date(year, month - 1, 1)
+  const monthEnd = new Date(year, month, 0)
+
+  return incomes.reduce((sum, income) => {
+    if (!income.is_active) return sum
+
+    const start = new Date(income.start_date)
+    if (start > monthEnd) return sum
+
+    if (income.end_date) {
+      const end = new Date(income.end_date)
+      if (end < monthStart) return sum
+    }
+
+    const alreadyProvisioned = provisionedTransactions.some((t) => {
+      const notes = (t as Transaction & { notes?: string | null }).notes
+      return (
+        (notes?.includes(income.id) ?? false) ||
+        (t.description === income.description && Number(t.amount) === Number(income.amount))
+      )
+    })
+    if (alreadyProvisioned) return sum
+
+    return sum + Number(income.amount || 0)
+  }, 0)
+}
+
+function getDefaultTransactionFilters(): TransactionListFilters {
+  const now = new Date()
+  return {
+    mesReferencia: getCurrentMesReferencia(),
+    periodMonth: now.getMonth(),
+    periodYear: now.getFullYear(),
+    categoryId: 'all',
+    cardId: 'all',
+    paymentMethod: 'all',
+    search: '',
+  }
+}
 
 export default function TransactionsPage() {
-  const { transactions, loading, error, fetchTransactions, deleteTransaction, deleteTransactions } = useTransactionsStore()
+  const {
+    transactions,
+    incomeTransactions,
+    loading,
+    incomesLoading,
+    error,
+    fetchTransactions,
+    fetchIncomeTransactions,
+    deleteTransaction,
+    deleteTransactions,
+  } = useTransactionsStore()
+  const { recurringIncomes, fetchRecurringIncomes } = useRecurringIncomesStore()
   const { categories } = useCategoriesStore()
   const { cards, fetchCards } = useCardsStore()
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
-  const [filters, setFilters] = useState({
-    startDate: '',
-    endDate: '',
-    categoryId: 'all',
-    cardId: 'all',
-    paymentMethod: 'all' as 'all' | 'credit' | 'debit' | 'cash' | 'pix' | 'boleto',
-    search: ''
-  })
+  const [filters, setFilters] = useState(getDefaultTransactionFilters)
 
   const { fetchCategories } = useCategoriesStore()
 
@@ -40,9 +107,23 @@ export default function TransactionsPage() {
     fetchCategories() // Carrega categorias ao montar o componente
   }, [fetchCards, fetchCategories])
 
+  const loadTransactionsData = () => {
+    fetchTransactions({
+      mesReferencia: filters.mesReferencia,
+      categoryId: filters.categoryId,
+      cardId: filters.cardId,
+      paymentMethod: filters.paymentMethod,
+      search: filters.search,
+      transactionType: 'expense',
+    })
+    fetchIncomeTransactions({ mesReferencia: filters.mesReferencia })
+    fetchRecurringIncomes()
+  }
+
   useEffect(() => {
-    fetchTransactions(filters)
-  }, [])
+    loadTransactionsData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.mesReferencia])
 
   // Limpa seleção quando as transações mudarem (apenas IDs que não existem mais)
   useEffect(() => {
@@ -57,7 +138,17 @@ export default function TransactionsPage() {
   }, [transactions])
 
   const applyFilters = () => {
-    fetchTransactions(filters)
+    loadTransactionsData()
+  }
+
+  const handlePeriodChange = (value: { month: number; year: number }) => {
+    const range = getMonthDateRange(value.year, value.month)
+    setFilters((f) => ({
+      ...f,
+      periodMonth: value.month,
+      periodYear: value.year,
+      mesReferencia: range.mesReferencia,
+    }))
   }
 
   const handleDelete = async (id: string, description: string) => {
@@ -150,19 +241,27 @@ export default function TransactionsPage() {
     return new Date(dateString).toLocaleDateString('pt-BR')
   }
 
-  // Calcular totais
-  const totals = transactions.reduce((acc, transaction) => {
-    if (transaction.type === 'income') {
-      acc.income += transaction.amount
-    } else {
-      acc.expense += transaction.amount
-    }
-    return acc
-  }, { income: 0, expense: 0 })
+  const incomeFromTransactions = incomeTransactions.reduce(
+    (sum, transaction) => sum + Number(transaction.amount || 0),
+    0
+  )
+  const incomeFromRecurring = recurringIncomeTotalForMesReferencia(
+    recurringIncomes,
+    filters.mesReferencia,
+    incomeTransactions
+  )
+  const totals = {
+    income: incomeFromTransactions + incomeFromRecurring,
+    expense: transactions.reduce(
+      (sum, transaction) => sum + Number(transaction.amount || 0),
+      0
+    ),
+  }
 
   const balance = totals.income - totals.expense
+  const isPageLoading = loading || incomesLoading
 
-  if (loading) {
+  if (isPageLoading) {
     return (
       <div className="container mx-auto py-6">
         <div className="flex items-center justify-center">
@@ -205,13 +304,25 @@ export default function TransactionsPage() {
 
       {/* Barra de filtros */}
       <div className="bg-white rounded-lg shadow-sm border p-4 mb-6 grid grid-cols-1 md:grid-cols-6 gap-4">
-        <div>
-          <label className="text-sm">Data Início</label>
-          <Input type="date" value={filters.startDate} onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))} />
-        </div>
-        <div>
-          <label className="text-sm">Data Fim</label>
-          <Input type="date" value={filters.endDate} onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))} />
+        <div className="md:col-span-2">
+          <label className="text-sm font-medium">Mês de referência</label>
+          <p className="text-xs text-muted-foreground mb-1">
+            Competência: {formatMesReferenciaLabel(filters.mesReferencia)}
+          </p>
+          <MonthYearPicker
+            value={{ month: filters.periodMonth, year: filters.periodYear }}
+            onChange={handlePeriodChange}
+            onCurrentMonth={() => {
+              const defaults = getDefaultTransactionFilters()
+              setFilters((f) => ({
+                ...f,
+                mesReferencia: defaults.mesReferencia,
+                periodMonth: defaults.periodMonth,
+                periodYear: defaults.periodYear,
+              }))
+            }}
+            className="max-w-[220px]"
+          />
         </div>
         <div>
           <label className="text-sm">Categoria</label>
@@ -427,7 +538,7 @@ export default function TransactionsPage() {
         open={importModalOpen}
         onOpenChange={setImportModalOpen}
         onImportSuccess={() => {
-          fetchTransactions(filters)
+          applyFilters()
         }}
       />
     </div>

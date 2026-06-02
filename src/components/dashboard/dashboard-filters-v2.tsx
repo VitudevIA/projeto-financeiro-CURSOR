@@ -19,6 +19,11 @@ import {
   ChevronUp
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  formatLocalDateString,
+  getMonthDateRange,
+  monthYearFromDateString,
+} from '@/utils/mes-referencia'
 
 export type PeriodPreset = 'current-month' | 'last-month' | 'last-quarter' | 'last-year' | 'custom' | 'compare'
 
@@ -46,45 +51,30 @@ const getPeriodDates = (preset: PeriodPreset): { start: string; end: string } =>
   const currentMonth = now.getMonth()
 
   switch (preset) {
-    case 'current-month': {
-      const start = new Date(currentYear, currentMonth, 1)
-      const end = new Date(currentYear, currentMonth + 1, 0)
-      return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
-      }
-    }
-    case 'last-month': {
-      const start = new Date(currentYear, currentMonth - 1, 1)
-      const end = new Date(currentYear, currentMonth, 0)
-      return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
-      }
-    }
+    case 'current-month':
+      return getMonthDateRange(currentYear, currentMonth)
+    case 'last-month':
+      return getMonthDateRange(currentYear, currentMonth - 1)
     case 'last-quarter': {
       const quarterStartMonth = Math.floor(currentMonth / 3) * 3 - 3
       const start = new Date(currentYear, quarterStartMonth < 0 ? quarterStartMonth + 12 : quarterStartMonth, 1)
       if (quarterStartMonth < 0) start.setFullYear(currentYear - 1)
       const end = new Date(currentYear, Math.floor(currentMonth / 3) * 3, 0)
       return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
+        start: formatLocalDateString(start),
+        end: formatLocalDateString(end),
       }
     }
     case 'last-year': {
       const start = new Date(currentYear - 1, 0, 1)
       const end = new Date(currentYear - 1, 11, 31)
       return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
+        start: formatLocalDateString(start),
+        end: formatLocalDateString(end),
       }
     }
     default:
-      return {
-        start: new Date(currentYear, currentMonth, 1).toISOString().split('T')[0],
-        end: new Date(currentYear, currentMonth + 1, 0).toISOString().split('T')[0],
-      }
+      return getMonthDateRange(currentYear, currentMonth)
   }
 }
 
@@ -99,18 +89,17 @@ export function DashboardFilters({ filters, onFiltersChange, className, transact
   }, [fetchCategories, fetchCards])
 
   // Extrair mês e ano das datas
-  const currentMonth = useMemo(() => {
-    const date = new Date(filters.startDate)
-    return { month: date.getMonth(), year: date.getFullYear() }
-  }, [filters.startDate])
+  const currentMonth = useMemo(
+    () => monthYearFromDateString(filters.startDate),
+    [filters.startDate]
+  )
 
   const handleMonthYearChange = (value: { month: number; year: number }) => {
-    const start = new Date(value.year, value.month, 1)
-    const end = new Date(value.year, value.month + 1, 0)
+    const range = getMonthDateRange(value.year, value.month)
     onFiltersChange({
       ...filters,
-      startDate: start.toISOString().split('T')[0],
-      endDate: end.toISOString().split('T')[0],
+      startDate: range.start,
+      endDate: range.end,
       periodPreset: 'custom',
     })
   }
@@ -129,8 +118,8 @@ export function DashboardFilters({ filters, onFiltersChange, className, transact
         startDate: dates.start,
         endDate: dates.end,
         compareMode: true,
-        compareStartDate: compareStart.toISOString().split('T')[0],
-        compareEndDate: compareEnd.toISOString().split('T')[0],
+        compareStartDate: formatLocalDateString(compareStart),
+        compareEndDate: formatLocalDateString(compareEnd),
       })
     } else {
       const dates = getPeriodDates(preset)
