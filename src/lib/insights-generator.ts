@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import type { Budget } from '@/types/database.types'
 import {
   addMonthsToMesReferencia,
   getCurrentMesReferencia,
@@ -33,6 +34,10 @@ type TransactionRow = {
   mes_referencia: string
   type: string
   category?: { name: string } | null
+}
+
+type BudgetRow = Budget & {
+  category: { name: string } | null
 }
 
 const HISTORY_MONTHS = 3
@@ -359,8 +364,10 @@ export class InsightsGenerator {
         return insights
       }
 
+      const budgetsList = budgets as BudgetRow[]
+
       const categoryIds = [
-        ...new Set(budgets.map((b) => b.category_id as string)),
+        ...new Set(budgetsList.map((b) => b.category_id)),
       ]
       const spentByCategory = await fetchSpentByCategory(
         currentMesReferencia,
@@ -368,7 +375,7 @@ export class InsightsGenerator {
         categoryIds
       )
 
-      for (const budget of budgets) {
+      for (const budget of budgetsList) {
         const spent = spentByCategory.get(budget.category_id) ?? 0
         const limitAmount = ensureNumber(budget.limit_amount)
         if (limitAmount <= 0) continue
@@ -377,8 +384,7 @@ export class InsightsGenerator {
         const alertThreshold = ensureNumber(budget.alert_percentage)
 
         if (percentage >= alertThreshold) {
-          const categoryName =
-            (budget.category as { name?: string } | null)?.name ?? 'Categoria'
+          const categoryName = budget.category?.name ?? 'Categoria'
           const message =
             percentage >= 100
               ? `Orçamento de ${categoryName} excedido! Você gastou R$ ${spent.toFixed(2)} de R$ ${limitAmount.toFixed(2)}`
