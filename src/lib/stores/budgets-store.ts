@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import type { Budget, BudgetWithCategory } from '@/types/database.types'
-import { getCurrentMesReferencia, isValidMesReferencia } from '@/utils/mes-referencia'
+import { normalizeMesReferencia } from '@/utils/mes-referencia'
 
 interface BudgetsStore {
   budgets: BudgetWithCategory[]
@@ -25,17 +25,6 @@ interface BudgetsStore {
   }) => Promise<void>
   updateBudget: (id: string, updates: Partial<Budget>) => Promise<void>
   deleteBudget: (id: string) => Promise<void>
-}
-
-function normalizeMesReferencia(input?: string): string {
-  if (input && isValidMesReferencia(input)) {
-    return input
-  }
-  if (input && /^\d{4}-\d{2}-\d{2}/.test(input)) {
-    const candidate = input.slice(0, 7)
-    if (isValidMesReferencia(candidate)) return candidate
-  }
-  return getCurrentMesReferencia()
 }
 
 function monthDateFromMesReferencia(mesReferencia: string): string {

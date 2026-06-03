@@ -10,6 +10,18 @@ export function isValidMesReferencia(value: string): boolean {
   return MES_REF_REGEX.test(value)
 }
 
+/** Garante YYYY-MM (7 caracteres); aceita prefixo de data ISO; senão retorna mês corrente */
+export function normalizeMesReferencia(input?: string | null): MesReferencia {
+  if (input && isValidMesReferencia(input)) {
+    return input
+  }
+  if (input && /^\d{4}-\d{2}-\d{2}/.test(input)) {
+    const candidate = input.slice(0, 7)
+    if (isValidMesReferencia(candidate)) return candidate
+  }
+  return getCurrentMesReferencia()
+}
+
 /** Extrai YYYY-MM de uma data ISO (YYYY-MM-DD) */
 export function mesReferenciaFromDate(dateIso: string): MesReferencia {
   if (!dateIso || dateIso.length < 7) {

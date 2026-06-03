@@ -22,7 +22,9 @@ import type { Transaction } from '@/types/database.types'
 import {
   getMesReferenciaOptions,
   inferMesReferencia,
+  isValidMesReferencia,
   mesReferenciaFromDate,
+  normalizeMesReferencia,
 } from '@/utils/mes-referencia'
 
 interface TransactionFormData {
@@ -48,6 +50,7 @@ export default function EditTransactionPage() {
   const transactionId = params.id as string
   
   const { updateTransaction, loading } = useTransactionsStore()
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const { categories, fetchCategories, loading: categoriesLoading } = useCategoriesStore()
   const { cards, fetchCards } = useCardsStore()
   const {
@@ -167,12 +170,15 @@ export default function EditTransactionPage() {
           type: (transaction.type === 'income' || transaction.type === 'expense') ? transaction.type : 'expense',
           categoryId: transaction.category_id || '',
           transactionDate: transaction.transaction_date || new Date().toISOString().split('T')[0],
-          mesReferencia:
-            (transaction as Transaction & { mes_referencia?: string }).mes_referencia ??
-            inferMesReferencia(
+          mesReferencia: (() => {
+            const raw = (transaction as Transaction & { mes_referencia?: string }).mes_referencia
+            if (raw && isValidMesReferencia(raw)) return raw
+            if (raw) return normalizeMesReferencia(raw)
+            return inferMesReferencia(
               transaction.transaction_date || new Date().toISOString().split('T')[0],
               transaction.payment_method || 'cash'
-            ),
+            )
+          })(),
           installments: transaction.total_installments || 1,
           expenseNature: transaction.expense_nature || '',
           paymentMethod: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(transaction.payment_method || ''))
@@ -320,8 +326,8 @@ export default function EditTransactionPage() {
       return
     }
 
+    setIsSubmitting(true)
     try {
-      // Salva preferências do usuário
       await savePreferences({
         categoryId: formData.categoryId,
         paymentMethod: formData.paymentMethod,
@@ -339,31 +345,31 @@ export default function EditTransactionPage() {
         ? (rawPaymentMethod as 'credit' | 'debit' | 'cash' | 'pix' | 'boleto')
         : 'cash'
 
-      // Prepara os dados para atualização
-      // Usa 'any' para permitir campos adicionais do banco que não estão na interface Transaction
-      const updateData: any = {
+      const mesReferencia =
+        formData.mesReferencia && isValidMesReferencia(formData.mesReferencia)
+          ? formData.mesReferencia
+          : inferMesReferencia(formData.transactionDate, formData.paymentMethod)
+
+      const updateData: Partial<Transaction> & { card_id?: string | null } = {
         description: formData.description,
         amount: formData.amount,
         type: validatedType,
         category_id: formData.categoryId,
         transaction_date: formData.transactionDate,
-        mes_referencia: formData.mesReferencia,
+        mes_referencia: normalizeMesReferencia(mesReferencia),
         payment_method: validatedPaymentMethod,
         card_id: validatedPaymentMethod === 'credit' || validatedPaymentMethod === 'debit' ? cardId : null,
-        expense_nature: formData.expenseNature || null,
-        installment_number: formData.installments > 1 ? 1 : null,
-        total_installments: formData.installments > 1 ? formData.installments : null,
       }
 
       await updateTransaction(transactionId, updateData)
       toast.success('Transação atualizada com sucesso!')
-
-      await new Promise((resolve) => setTimeout(resolve, 500))
       router.push('/transactions')
     } catch (error) {
       console.error('Erro ao atualizar transação:', error)
       const errorMsg = (error as Error).message || 'Erro desconhecido ao atualizar transação'
       toast.error(errorMsg)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -789,11 +795,16 @@ export default function EditTransactionPage() {
               </div>
 
               <div className="flex gap-4 pt-4">
-                <Button type="button" variant="outline" onClick={() => router.push('/transactions')} disabled={loading}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => router.push('/transactions')}
+                  disabled={isSubmitting || loading}
+                >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={loading}>
-                  {loading ? 'Atualizando...' : 'Atualizar Despesa'}
+                <Button type="submit" disabled={isSubmitting || loading}>
+                  {isSubmitting || loading ? 'Atualizando...' : 'Atualizar Despesa'}
                 </Button>
               </div>
             </form>

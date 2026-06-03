@@ -2,7 +2,23 @@ import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import type { Transaction } from '@/types/database.types'
-import { inferMesReferencia, mesReferenciaFromDate, mesReferenciaRangeFromDates } from '@/utils/mes-referencia'
+import {
+  inferMesReferencia,
+  mesReferenciaFromDate,
+  mesReferenciaRangeFromDates,
+  normalizeMesReferencia,
+} from '@/utils/mes-referencia'
+
+type TransactionsListFilters = {
+  mesReferencia?: string
+  startDate?: string
+  endDate?: string
+  categoryId?: string
+  cardId?: string
+  paymentMethod?: PaymentMethod | 'all'
+  search?: string
+  transactionType?: 'income' | 'expense'
+}
 
 type PaymentMethod = 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
 
@@ -12,16 +28,9 @@ interface TransactionsStore {
   loading: boolean
   incomesLoading: boolean
   error: string | null
-  fetchTransactions: (filters?: {
-    mesReferencia?: string
-    startDate?: string
-    endDate?: string
-    categoryId?: string
-    cardId?: string
-    paymentMethod?: PaymentMethod | 'all'
-    search?: string
-    transactionType?: 'income' | 'expense'
-  }) => Promise<void>
+  /** Últimos filtros da listagem (para revalidar após update/delete) */
+  lastFetchFilters: TransactionsListFilters | null
+  fetchTransactions: (filters?: TransactionsListFilters) => Promise<void>
   fetchIncomeTransactions: (filters: { mesReferencia: string }) => Promise<void>
   addTransaction: (transaction: {
     description: string
@@ -38,7 +47,10 @@ interface TransactionsStore {
     card_id?: string | null
     notes?: string | null
   }) => Promise<void>
-  updateTransaction: (id: string, updates: Partial<Transaction>) => Promise<void>
+  updateTransaction: (
+    id: string,
+    updates: Partial<Transaction> & { card_id?: string | null; notes?: string | null }
+  ) => Promise<void>
   deleteTransaction: (id: string) => Promise<void>
   deleteTransactions: (ids: string[]) => Promise<void>
 }
@@ -49,9 +61,14 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
   loading: false,
   incomesLoading: false,
   error: null,
+  lastFetchFilters: null,
 
   fetchTransactions: async (filters) => {
-    set({ loading: true, error: null })
+    set({
+      loading: true,
+      error: null,
+      lastFetchFilters: filters ?? null,
+    })
     try {
       const supabase = createClient()
       
@@ -384,39 +401,59 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
     }
   },
 
-  updateTransaction: async (id: string, updates: Partial<Transaction>) => {
+  updateTransaction: async (
+    id: string,
+    updates: Partial<Transaction> & { card_id?: string | null; notes?: string | null }
+  ) => {
+    set({ loading: true, error: null })
     try {
       const supabase = createClient()
 
-      const payload: Partial<Transaction> = { ...updates }
-      if (updates.transaction_date) {
+      const {
+        category: _category,
+        installment_number: _installmentNumber,
+        total_installments: _totalInstallments,
+        expense_nature: _expenseNature,
+        ...rest
+      } = updates as Partial<Transaction> & {
+        category?: unknown
+        installment_number?: number | null
+        total_installments?: number | null
+        expense_nature?: string | null
+      }
+
+      const payload: Record<string, unknown> = { ...rest }
+
+      if (updates.mes_referencia != null && String(updates.mes_referencia).trim() !== '') {
+        payload.mes_referencia = normalizeMesReferencia(String(updates.mes_referencia))
+      } else if (updates.transaction_date) {
         payload.mes_referencia = mesReferenciaFromDate(updates.transaction_date)
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('transactions')
         .update(payload)
         .eq('id', id)
-        .select()
-        .single()
 
       if (error) throw error
 
-      // Garante que o tipo seja correto (income | expense)
-      const updatedTransaction: Transaction = {
-        ...data,
-        type: (data.type === 'income' || data.type === 'expense') ? data.type : 'expense',
-        payment_method: (['credit', 'debit', 'cash', 'pix', 'boleto'].includes(data.payment_method || ''))
-          ? data.payment_method as PaymentMethod
-          : 'cash',
-      } as Transaction
-
-      set((state) => ({
-        transactions: state.transactions.map((t) => (t.id === id ? updatedTransaction : t))
-      }))
+      const refetchFilters = get().lastFetchFilters
+      if (refetchFilters) {
+        const normalizedFilters: TransactionsListFilters = {
+          ...refetchFilters,
+          ...(refetchFilters.mesReferencia
+            ? { mesReferencia: normalizeMesReferencia(refetchFilters.mesReferencia) }
+            : {}),
+        }
+        await get().fetchTransactions(normalizedFilters)
+      } else {
+        await get().fetchTransactions()
+      }
     } catch (error) {
       set({ error: (error as Error).message })
       throw error
+    } finally {
+      set({ loading: false })
     }
   },
 
@@ -460,10 +497,3 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
     }
   }
 }))
-
-// Função auxiliar para calcular o próximo mês
-function getNextMonth(month: string): string {
-  const date = new Date(month)
-  date.setMonth(date.getMonth() + 1)
-  return date.toISOString().split('T')[0]
-}
