@@ -87,7 +87,7 @@ export default function IncomesPage() {
   const getNextOccurrences = (income: RecurringIncome, count: number = 6) => {
     const occurrences: Date[] = []
     const now = new Date()
-    let month = new Date(now.getFullYear(), now.getMonth(), 1)
+    const month = new Date(now.getFullYear(), now.getMonth(), 1)
 
     for (let i = 0; i < count; i++) {
       const occurrence = new Date(

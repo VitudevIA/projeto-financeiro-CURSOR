@@ -71,7 +71,8 @@ export async function GET(request: NextRequest) {
 
     // Filtra receitas que não são provisionadas (não têm notes com "Provisionado")
     const variableIncomes = (data || []).filter(
-      (transaction: any) => !transaction.notes || !transaction.notes.includes('Provisionado')
+      (transaction) =>
+        !transaction.notes || !transaction.notes.includes('Provisionado')
     )
 
     return NextResponse.json({ data: variableIncomes }, { status: 200 })

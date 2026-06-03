@@ -55,7 +55,7 @@ function calculateExpenseControl(
   const avgMonthlyExpense = totalExpenses / periodMonths;
 
   // Verifica se está dentro dos orçamentos
-  let withinBudgetCount = 0;
+  const withinBudgetCount = 0;
   const budgetMap = new Map<string, number>();
   budgets.forEach(b => {
     const existing = budgetMap.get(b.category_id) || 0;

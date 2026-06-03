@@ -17,7 +17,8 @@ interface ImprovedInputProps extends React.InputHTMLAttributes<HTMLInputElement>
  */
 export const ImprovedInput = React.forwardRef<HTMLInputElement, ImprovedInputProps>(
   ({ className, label, error, hint, required, id, ...props }, ref) => {
-    const inputId = id || `input-${React.useId()}`
+    const generatedId = React.useId()
+    const inputId = id ?? `input-${generatedId}`
     const errorId = error ? `${inputId}-error` : undefined
     const hintId = hint ? `${inputId}-hint` : undefined
 

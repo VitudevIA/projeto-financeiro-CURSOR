@@ -125,7 +125,7 @@ export const useBudgetsStore = create<BudgetsStore>((set) => ({
       const supabase = createClient()
       const userId = await resolveUserId()
 
-      let query = supabase
+      const query = supabase
         .from('budgets')
         .select(`
           *,

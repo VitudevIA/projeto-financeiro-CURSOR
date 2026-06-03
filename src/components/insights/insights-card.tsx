@@ -157,7 +157,7 @@ export default function InsightsCard() {
             <Lightbulb className="h-12 w-12 mx-auto mb-4 text-gray-300" />
             <p className="text-lg font-medium mb-2">Nenhum insight disponível</p>
             <p className="text-sm mb-4">
-              Clique em "Gerar" para criar insights automáticos baseados nos seus dados
+              Clique em &quot;Gerar&quot; para criar insights automáticos baseados nos seus dados
             </p>
             <Button onClick={handleGenerateInsights}>
               <RefreshCw className="mr-2 h-4 w-4" />

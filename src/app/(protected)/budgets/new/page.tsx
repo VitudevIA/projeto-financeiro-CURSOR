@@ -58,21 +58,18 @@ function NewBudgetForm() {
     fetchBudgets(formData.mesReferencia)
   }, [fetchBudgets, formData.mesReferencia])
 
-  useEffect(() => {
-    if (!formData.categoryId) return
-
-    const existing = budgets.find((b) => b.category_id === formData.categoryId)
-    if (existing) {
-      setFormData((prev) => ({
-        ...prev,
-        limitAmount: existing.limit_amount,
-        alertPercentage:
-          existing.alert_percentage != null ? String(existing.alert_percentage) : '',
-      }))
-    }
-  }, [formData.categoryId, budgets])
-
   const existingForSelection = budgets.find((b) => b.category_id === formData.categoryId)
+
+  const handleCategoryChange = (categoryId: string) => {
+    const existing = budgets.find((b) => b.category_id === categoryId)
+    setFormData((prev) => ({
+      ...prev,
+      categoryId,
+      limitAmount: existing?.limit_amount ?? 0,
+      alertPercentage:
+        existing?.alert_percentage != null ? String(existing.alert_percentage) : '',
+    }))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -161,17 +158,7 @@ function NewBudgetForm() {
 
               <div className="space-y-2">
                 <Label htmlFor="category">Categoria *</Label>
-                <Select
-                  value={formData.categoryId}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      categoryId: value,
-                      limitAmount: 0,
-                      alertPercentage: '',
-                    }))
-                  }
-                >
+                <Select value={formData.categoryId} onValueChange={handleCategoryChange}>
                   <SelectTrigger id="category">
                     <SelectValue placeholder="Selecione a categoria de despesa" />
                   </SelectTrigger>

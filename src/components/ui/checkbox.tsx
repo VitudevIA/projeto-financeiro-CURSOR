@@ -19,7 +19,7 @@ function Checkbox({
 
   React.useEffect(() => {
     if (checkboxRef.current && indeterminate !== undefined) {
-      // @ts-ignore - propriedade indeterminate nativa do checkbox HTML
+      // @ts-expect-error - propriedade indeterminate nativa do checkbox HTML
       checkboxRef.current.indeterminate = indeterminate
     }
   }, [indeterminate])

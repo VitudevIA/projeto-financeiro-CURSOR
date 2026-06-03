@@ -67,8 +67,8 @@ export abstract class BaseBankStatementParser implements IBankStatementParser {
     const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/)
     if (!match) return dateStr
 
-    let day = match[1].padStart(2, '0')
-    let month = match[2].padStart(2, '0')
+    const day = match[1].padStart(2, '0')
+    const month = match[2].padStart(2, '0')
     // Garante que finalYear seja sempre string
     let finalYear = year 
       ? year.toString() 

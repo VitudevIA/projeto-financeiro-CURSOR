@@ -790,7 +790,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Se é parcela específica, calcula o valor da parcela
-          let finalAmount = amount
+          const finalAmount = amount
           if (totalInstallments && totalInstallments > 1 && installmentNumber && installmentNumber > 1) {
             // Para parcelas específicas, assume que o valor informado é o valor da parcela
             // (não divide, pois o usuário já informou o valor correto da parcela)

@@ -197,8 +197,8 @@ export function parseCreditCardBill(text: string): ExtractedTransaction[] {
     const dateMatch = line.match(datePattern)
     if (!dateMatch) continue
 
-    let day = parseInt(dateMatch[1])
-    let month = parseInt(dateMatch[2])
+    const day = parseInt(dateMatch[1])
+    const month = parseInt(dateMatch[2])
     let year = dateMatch[3] ? parseInt(dateMatch[3]) : currentYear
 
     // Ajusta para o ano correto (se a data está no futuro, provavelmente é do ano passado)

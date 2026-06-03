@@ -38,6 +38,54 @@ export type Database = {
         }
         Relationships: []
       }
+      recurring_incomes: {
+        Row: {
+          amount: number
+          card_id: string | null
+          category_id: string
+          created_at: string
+          day_of_month: number
+          description: string
+          end_date: string | null
+          id: string
+          is_active: boolean
+          payment_method: string
+          start_date: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          card_id?: string | null
+          category_id: string
+          created_at?: string
+          day_of_month: number
+          description: string
+          end_date?: string | null
+          id?: string
+          is_active?: boolean
+          payment_method?: string
+          start_date?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          card_id?: string | null
+          category_id?: string
+          created_at?: string
+          day_of_month?: number
+          description?: string
+          end_date?: string | null
+          id?: string
+          is_active?: boolean
+          payment_method?: string
+          start_date?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       budgets: {
         Row: {
           alert_percentage: number | null

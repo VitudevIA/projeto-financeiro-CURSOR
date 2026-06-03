@@ -73,7 +73,7 @@ export default function TermsPage() {
         </CardHeader>
         <CardContent>
           <p className="text-gray-700">
-            O serviço é fornecido "como está" e "conforme disponível". Não garantimos que o serviço será ininterrupto, 
+            O serviço é fornecido &quot;como está&quot; e &quot;conforme disponível&quot;. Não garantimos que o serviço será ininterrupto, 
             livre de erros ou que atenderá às suas necessidades específicas. Nossa responsabilidade é limitada ao máximo 
             permitido por lei.
           </p>

@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { ChevronLeft, ChevronRight, Calendar, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface MonthYearPickerProps {
@@ -39,10 +38,13 @@ export function MonthYearPicker({ value, onChange, onCurrentMonth, className }: 
   const [displayYear, setDisplayYear] = useState(value.year)
   const [displayMonth, setDisplayMonth] = useState(value.month)
 
-  useEffect(() => {
-    setDisplayYear(value.year)
-    setDisplayMonth(value.month)
-  }, [value.year, value.month])
+  const handleOpenChange = (open: boolean) => {
+    setIsOpen(open)
+    if (open) {
+      setDisplayYear(value.year)
+      setDisplayMonth(value.month)
+    }
+  }
 
   const handleMonthSelect = (month: number) => {
     setDisplayMonth(month)
@@ -65,7 +67,7 @@ export function MonthYearPicker({ value, onChange, onCurrentMonth, className }: 
   const isCurrentMonth = value.month === new Date().getMonth() && value.year === new Date().getFullYear()
 
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
+    <Popover open={isOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           className={cn(

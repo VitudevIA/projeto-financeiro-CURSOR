@@ -61,6 +61,7 @@ export async function extractTextFromPDFServer(buffer: Buffer): Promise<string> 
     try {
       // Usa require direto do pacote (compatível com Turbopack)
       // Next.js e Turbopack conseguem resolver isso corretamente em server components
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- carregamento só no servidor; tipos do pacote incompletos
       const pdfParseModule = require('pdf-parse')
       
       // Extrai a função de diferentes formatos de exportação

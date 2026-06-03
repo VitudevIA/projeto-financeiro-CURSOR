@@ -12,6 +12,7 @@ import {
   defaultProvisionStartMonth,
   resolveMesReferenciaFromTransactionDate,
 } from '@/lib/incomes/resolve-mes-referencia'
+import type { TablesInsert } from '@/types/supabase'
 
 interface ProvisionRequest {
   recurringIncomeId?: string // Se fornecido, provisiona apenas esta receita
@@ -67,8 +68,7 @@ export async function POST(request: NextRequest) {
     // Calcula mês inicial (competência corrente por padrão)
     const currentMonth = new Date(startMonth + '-01')
 
-    // Gera transações provisionadas
-    const transactionsToInsert: any[] = []
+    const transactionsToInsert: TablesInsert<'transactions'>[] = []
     const provisionedCount: Record<string, number> = {}
 
     for (const recurringIncome of recurringIncomes) {
@@ -117,8 +117,8 @@ export async function POST(request: NextRequest) {
           category_id: recurringIncome.category_id,
           transaction_date: transactionDate,
           mes_referencia,
-          payment_method: recurringIncome.payment_method,
-          card_id: recurringIncome.card_id,
+          payment_method: recurringIncome.payment_method ?? undefined,
+          card_id: recurringIncome.card_id ?? undefined,
           notes: `Provisionado de receita recorrente: ${recurringIncome.id}`,
         })
 

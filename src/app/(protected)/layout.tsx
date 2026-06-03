@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, startTransition } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import { useAuthInit } from '@/hooks/useAuthInit'
@@ -38,12 +38,11 @@ export default function ProtectedLayout({
 
   // Marca como montado após a hidratação (evita hydration mismatch)
   useEffect(() => {
-    setIsMounted(true)
+    startTransition(() => setIsMounted(true))
   }, [])
 
-  // Fecha sidebar ao mudar de rota no mobile
   useEffect(() => {
-    setSidebarOpen(false)
+    startTransition(() => setSidebarOpen(false))
   }, [pathname])
 
   const handleSignOut = async () => {

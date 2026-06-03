@@ -173,7 +173,7 @@ export class WillBankParser extends BaseBankStatementParser {
 
       if (isDescricao) {
         // Verifica as próximas 6 linhas para encontrar parcelamento, data e valor
-        let descricaoTemp = linha.trim()
+        const descricaoTemp = linha.trim()
         let dataTemp: string | null = null
         let valorTemp: number | null = null
         let parcelamentoTemp: { current: number; total: number } | null = null
