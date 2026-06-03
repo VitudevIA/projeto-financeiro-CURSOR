@@ -7,6 +7,62 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { RecurringIncomeInsert } from '@/types/database.types'
+import {
+  buildRecurringIncomeTransactionDate,
+  resolveMesReferenciaFromTransactionDate,
+} from '@/lib/incomes/resolve-mes-referencia'
+
+async function insertInitialIncomeTransaction(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  userId: string,
+  recurringIncome: {
+    id: string
+    description: string
+    amount: number
+    category_id: string
+    payment_method: string
+    card_id: string | null
+    start_date: string
+    day_of_month: number
+  }
+) {
+  const transaction_date = buildRecurringIncomeTransactionDate(
+    recurringIncome.start_date,
+    recurringIncome.day_of_month
+  )
+  const mes_referencia = resolveMesReferenciaFromTransactionDate(transaction_date)
+
+  const { data: existing } = await supabase
+    .from('transactions')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('type', 'income')
+    .eq('transaction_date', transaction_date)
+    .eq('mes_referencia', mes_referencia)
+    .ilike('description', `%${recurringIncome.description}%`)
+    .limit(1)
+
+  if (existing && existing.length > 0) {
+    return
+  }
+
+  const { error } = await supabase.from('transactions').insert({
+    user_id: userId,
+    description: recurringIncome.description,
+    amount: recurringIncome.amount,
+    type: 'income',
+    category_id: recurringIncome.category_id,
+    transaction_date,
+    mes_referencia,
+    payment_method: recurringIncome.payment_method,
+    card_id: recurringIncome.card_id,
+    notes: `Provisionado de receita recorrente: ${recurringIncome.id}`,
+  })
+
+  if (error) {
+    console.warn('Receita recorrente criada, mas falha ao registrar transação inicial:', error)
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -124,6 +180,17 @@ export async function POST(request: NextRequest) {
       console.error('Erro ao criar receita recorrente:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    await insertInitialIncomeTransaction(supabase, user.id, {
+      id: data.id,
+      description: data.description,
+      amount: data.amount,
+      category_id: data.category_id,
+      payment_method: data.payment_method,
+      card_id: data.card_id,
+      start_date: data.start_date,
+      day_of_month: data.day_of_month,
+    })
 
     return NextResponse.json({ data }, { status: 201 })
   } catch (error) {

@@ -247,6 +247,75 @@ export function formatMesReferenciaLabel(mesRef: string): string {
   return `${MESES_PT[monthIndex] ?? m} ${y}`
 }
 
+const MESES_SHORT_PT = [
+  'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
+]
+
+/** Rótulo compacto para eixos de gráfico (ex: 2026-06 → Jun/26) */
+export function formatMesReferenciaShort(mesRef: string): string {
+  if (!isValidMesReferencia(mesRef)) return mesRef
+  const [y, m] = mesRef.split('-')
+  const monthIndex = parseInt(m, 10) - 1
+  return `${MESES_SHORT_PT[monthIndex] ?? m}/${y.slice(2)}`
+}
+
+export interface CompetenciaTimeSeriesPoint {
+  date: string
+  amount: number
+  label: string
+}
+
+/** Agrega despesas por mes_referencia (competência real da transação) */
+export function buildCompetenciaExpenseSeriesFromTransactions(
+  transactions: Array<{
+    type: string
+    amount: number | string
+    mes_referencia?: string | null
+  }>
+): CompetenciaTimeSeriesPoint[] {
+  const totals = new Map<string, number>()
+
+  for (const transaction of transactions) {
+    if (transaction.type !== 'expense') continue
+    const mes = transaction.mes_referencia
+    if (!mes || !isValidMesReferencia(mes)) continue
+    const amount =
+      typeof transaction.amount === 'number'
+        ? transaction.amount
+        : parseFloat(String(transaction.amount)) || 0
+    totals.set(mes, (totals.get(mes) ?? 0) + amount)
+  }
+
+  return Array.from(totals.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([mes, amount]) => ({
+      date: mes,
+      amount: Number(amount.toFixed(2)),
+      label: formatMesReferenciaShort(mes),
+    }))
+}
+
+/** Agrega série diária em buckets mensais (fallback quando só há timeSeriesData) */
+export function buildCompetenciaExpenseSeriesFromDaily(
+  points: Array<{ date: string; amount: number }>
+): CompetenciaTimeSeriesPoint[] {
+  const totals = new Map<string, number>()
+
+  for (const point of points) {
+    const mes = mesReferenciaFromDate(point.date)
+    totals.set(mes, (totals.get(mes) ?? 0) + point.amount)
+  }
+
+  return Array.from(totals.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([mes, amount]) => ({
+      date: mes,
+      amount: Number(amount.toFixed(2)),
+      label: formatMesReferenciaShort(mes),
+    }))
+}
+
 /** Mês atual no formato YYYY-MM (fuso local) */
 export function getCurrentMesReferencia(): MesReferencia {
   const now = new Date()

@@ -17,6 +17,12 @@ interface BudgetsStore {
     limit_amount: number
     alert_percentage: number | null
   }) => Promise<void>
+  upsertBudget: (budget: {
+    category_id: string
+    mesReferencia: string
+    limit_amount: number
+    alert_percentage: number | null
+  }) => Promise<void>
   updateBudget: (id: string, updates: Partial<Budget>) => Promise<void>
   deleteBudget: (id: string) => Promise<void>
 }
@@ -156,17 +162,13 @@ export const useBudgetsStore = create<BudgetsStore>((set) => ({
     }
   },
 
-  addBudget: async (budget: {
-    category_id: string
-    month: string
-    limit_amount: number
-    alert_percentage: number | null
-  }) => {
+  addBudget: async (budget) => {
     try {
       const supabase = createClient()
+      const userId = await resolveUserId()
       const { data, error } = await supabase
         .from('budgets')
-        .insert([budget as never])
+        .insert([{ ...budget, user_id: userId } as never])
         .select()
         .single()
 
@@ -176,6 +178,55 @@ export const useBudgetsStore = create<BudgetsStore>((set) => ({
       set((state) => ({
         budgets: [created, ...state.budgets],
       }))
+    } catch (error) {
+      set({ error: (error as Error).message })
+      throw error
+    }
+  },
+
+  upsertBudget: async (budget) => {
+    const targetMesReferencia = normalizeMesReferencia(budget.mesReferencia)
+    const monthStart = monthDateFromMesReferencia(targetMesReferencia)
+
+    try {
+      const supabase = createClient()
+      const userId = await resolveUserId()
+
+      const { data: existing, error: findError } = await supabase
+        .from('budgets')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('category_id', budget.category_id)
+        .gte('month', monthStart)
+        .lt('month', getNextMonth(monthStart))
+        .maybeSingle()
+
+      if (findError) throw findError
+
+      const payload = {
+        category_id: budget.category_id,
+        month: monthStart,
+        limit_amount: budget.limit_amount,
+        alert_percentage: budget.alert_percentage,
+        user_id: userId,
+      }
+
+      if (existing?.id) {
+        const { error } = await supabase
+          .from('budgets')
+          .update({
+            limit_amount: payload.limit_amount,
+            alert_percentage: payload.alert_percentage,
+          })
+          .eq('id', existing.id)
+
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('budgets').insert([payload as never])
+        if (error) throw error
+      }
+
+      await useBudgetsStore.getState().fetchBudgets(targetMesReferencia)
     } catch (error) {
       set({ error: (error as Error).message })
       throw error

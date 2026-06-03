@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { createClient } from '@/lib/supabase/client'
 import type { RecurringIncome, RecurringIncomeInsert, RecurringIncomeUpdate } from '@/types/database.types'
+import { defaultProvisionStartMonth } from '@/lib/incomes/resolve-mes-referencia'
 
 interface RecurringIncomesState {
   recurringIncomes: RecurringIncome[]
@@ -13,6 +13,14 @@ interface RecurringIncomesState {
   provisionIncomes: (params: { recurringIncomeId?: string; months?: number; startMonth?: string }) => Promise<{ error: string | null; count?: number }>
 }
 
+function withMesReferenciaFromStartDate(income: RecurringIncomeInsert): RecurringIncomeInsert {
+  const startDate = income.start_date || new Date().toISOString().split('T')[0]
+  return {
+    ...income,
+    start_date: startDate,
+  }
+}
+
 export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get) => ({
   recurringIncomes: [],
   loading: false,
@@ -22,7 +30,7 @@ export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get)
     try {
       set({ loading: true, error: null })
       const response = await fetch('/api/incomes/recurring')
-      
+
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || 'Erro ao buscar receitas recorrentes')
@@ -40,10 +48,12 @@ export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get)
   addRecurringIncome: async (income) => {
     try {
       set({ loading: true, error: null })
+      const payload = withMesReferenciaFromStartDate(income)
+
       const response = await fetch('/api/incomes/recurring', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(income),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -68,10 +78,13 @@ export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get)
   updateRecurringIncome: async (id, updates) => {
     try {
       set({ loading: true, error: null })
+
+      const payload: RecurringIncomeUpdate = { ...updates }
+
       const response = await fetch(`/api/incomes/recurring/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -123,10 +136,15 @@ export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get)
   provisionIncomes: async (params) => {
     try {
       set({ loading: true, error: null })
+      const startMonth = defaultProvisionStartMonth(params.startMonth)
+
       const response = await fetch('/api/incomes/provision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
+        body: JSON.stringify({
+          ...params,
+          startMonth,
+        }),
       })
 
       if (!response.ok) {
@@ -136,7 +154,7 @@ export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get)
 
       const { data } = await response.json()
       set({ loading: false })
-      
+
       return { error: null, count: data.transactions?.length || 0 }
     } catch (error) {
       const errorMessage = (error as Error).message || 'Erro desconhecido'

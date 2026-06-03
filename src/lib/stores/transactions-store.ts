@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthStore } from '@/lib/stores/auth-store'
 import type { Transaction } from '@/types/database.types'
-import { inferMesReferencia, mesReferenciaRangeFromDates } from '@/utils/mes-referencia'
+import { inferMesReferencia, mesReferenciaFromDate, mesReferenciaRangeFromDates } from '@/utils/mes-referencia'
 
 type PaymentMethod = 'credit' | 'debit' | 'cash' | 'pix' | 'boleto'
 
@@ -336,7 +336,9 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
         transaction_date: transaction.transaction_date,
         mes_referencia:
           transaction.mes_referencia ??
-          inferMesReferencia(transaction.transaction_date, validatedPaymentMethod),
+          (validatedType === 'income'
+            ? mesReferenciaFromDate(transaction.transaction_date)
+            : inferMesReferencia(transaction.transaction_date, validatedPaymentMethod)),
         user_id: userId,
         payment_method: validatedPaymentMethod,
         card_id: transaction.card_id || null,
@@ -385,9 +387,15 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
   updateTransaction: async (id: string, updates: Partial<Transaction>) => {
     try {
       const supabase = createClient()
+
+      const payload: Partial<Transaction> = { ...updates }
+      if (updates.transaction_date) {
+        payload.mes_referencia = mesReferenciaFromDate(updates.transaction_date)
+      }
+
       const { data, error } = await supabase
         .from('transactions')
-        .update(updates)
+        .update(payload)
         .eq('id', id)
         .select()
         .single()

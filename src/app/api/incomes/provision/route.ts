@@ -7,6 +7,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import {
+  buildRecurringIncomeTransactionDate,
+  defaultProvisionStartMonth,
+  resolveMesReferenciaFromTransactionDate,
+} from '@/lib/incomes/resolve-mes-referencia'
 
 interface ProvisionRequest {
   recurringIncomeId?: string // Se fornecido, provisiona apenas esta receita
@@ -29,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     const body: ProvisionRequest = await request.json()
     const months = body.months || 12
-    const startMonth = body.startMonth || null
+    const startMonth = defaultProvisionStartMonth(body.startMonth ?? undefined)
 
     if (months < 1 || months > 24) {
       return NextResponse.json({ error: 'Número de meses deve estar entre 1 e 24' }, { status: 400 })
@@ -59,11 +64,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calcula mês inicial
-    const now = new Date()
-    let currentMonth = startMonth
-      ? new Date(startMonth + '-01')
-      : new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    // Calcula mês inicial (competência corrente por padrão)
+    const currentMonth = new Date(startMonth + '-01')
 
     // Gera transações provisionadas
     const transactionsToInsert: any[] = []
@@ -84,20 +86,21 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Calcula data da transação baseada no day_of_month
-        const transactionDate = new Date(
-          monthDate.getFullYear(),
-          monthDate.getMonth(),
-          Math.min(recurringIncome.day_of_month, new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate())
+        const transactionDate = buildRecurringIncomeTransactionDate(
+          `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}-01`,
+          recurringIncome.day_of_month
         )
 
         // Verifica se já existe transação para essa receita nesse mês
+        const mes_referencia = resolveMesReferenciaFromTransactionDate(transactionDate)
+
         const existingCheck = await supabase
           .from('transactions')
           .select('id')
           .eq('user_id', user.id)
-          .eq('transaction_date', transactionDate.toISOString().split('T')[0])
+          .eq('transaction_date', transactionDate)
           .eq('type', 'income')
+          .eq('mes_referencia', mes_referencia)
           .ilike('description', `%${recurringIncome.description}%`)
           .limit(1)
 
@@ -106,16 +109,14 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        const mesReferencia = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`
-
         transactionsToInsert.push({
           user_id: user.id,
           description: recurringIncome.description,
           amount: recurringIncome.amount,
           type: 'income',
           category_id: recurringIncome.category_id,
-          transaction_date: transactionDate.toISOString().split('T')[0],
-          mes_referencia: mesReferencia,
+          transaction_date: transactionDate,
+          mes_referencia,
           payment_method: recurringIncome.payment_method,
           card_id: recurringIncome.card_id,
           notes: `Provisionado de receita recorrente: ${recurringIncome.id}`,

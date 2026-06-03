@@ -8,6 +8,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { RecurringIncomeUpdate } from '@/types/database.types'
+import { resolveMesReferenciaFromTransactionDate } from '@/lib/incomes/resolve-mes-referencia'
+
+async function syncLinkedIncomeTransactionsMesReferencia(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  userId: string,
+  recurringIncomeId: string
+) {
+  const { data: linked, error } = await supabase
+    .from('transactions')
+    .select('id, transaction_date')
+    .eq('user_id', userId)
+    .eq('type', 'income')
+    .ilike('notes', `%${recurringIncomeId}%`)
+
+  if (error || !linked?.length) {
+    return
+  }
+
+  for (const row of linked) {
+    const mes_referencia = resolveMesReferenciaFromTransactionDate(row.transaction_date)
+    await supabase
+      .from('transactions')
+      .update({ mes_referencia })
+      .eq('id', row.id)
+      .eq('user_id', userId)
+  }
+}
 
 export async function GET(
   request: NextRequest,
@@ -89,6 +116,8 @@ export async function PUT(
       }
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    await syncLinkedIncomeTransactionsMesReferencia(supabase, user.id, id)
 
     return NextResponse.json({ data }, { status: 200 })
   } catch (error) {

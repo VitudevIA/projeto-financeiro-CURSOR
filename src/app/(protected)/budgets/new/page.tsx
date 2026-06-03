@@ -1,185 +1,254 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useTransactionsStore } from '@/lib/stores/transactions-store'
+import { useEffect, useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useBudgetsStore } from '@/lib/stores/budgets-store'
 import { useCategoriesStore } from '@/lib/stores/categories-store'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
+import { Target } from 'lucide-react'
+import {
+  formatMesReferenciaLabel,
+  getCurrentMesReferencia,
+  getMesReferenciaOptions,
+  isValidMesReferencia,
+} from '@/utils/mes-referencia'
 
-interface TransactionFormData {
-  description: string
-  amount: number
-  type: 'income' | 'expense'
+interface BudgetFormData {
   categoryId: string
-  transactionDate: string
+  mesReferencia: string
+  limitAmount: number
+  alertPercentage: string
 }
 
-export default function NewTransactionPage() {
+function NewBudgetForm() {
   const router = useRouter()
-  const { addTransaction, loading } = useTransactionsStore()
-  const { categories } = useCategoriesStore()
-  const [formData, setFormData] = useState<TransactionFormData>({
-    description: '',
-    amount: 0,
-    type: 'expense',
+  const searchParams = useSearchParams()
+  const { upsertBudget, loading, budgets, fetchBudgets } = useBudgetsStore()
+  const { categories, fetchCategories } = useCategoriesStore()
+
+  const monthFromQuery = searchParams.get('month')
+  const initialMesReferencia =
+    monthFromQuery && isValidMesReferencia(monthFromQuery)
+      ? monthFromQuery
+      : getCurrentMesReferencia()
+
+  const [formData, setFormData] = useState<BudgetFormData>({
     categoryId: '',
-    transactionDate: new Date().toISOString().split('T')[0]
+    mesReferencia: initialMesReferencia,
+    limitAmount: 0,
+    alertPercentage: '',
   })
+
+  const expenseCategories = categories.filter(
+    (cat) => cat.type === 'expense' || !cat.type
+  )
+
+  const monthOptions = getMesReferenciaOptions()
+
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
+
+  useEffect(() => {
+    fetchBudgets(formData.mesReferencia)
+  }, [fetchBudgets, formData.mesReferencia])
+
+  useEffect(() => {
+    if (!formData.categoryId) return
+
+    const existing = budgets.find((b) => b.category_id === formData.categoryId)
+    if (existing) {
+      setFormData((prev) => ({
+        ...prev,
+        limitAmount: existing.limit_amount,
+        alertPercentage:
+          existing.alert_percentage != null ? String(existing.alert_percentage) : '',
+      }))
+    }
+  }, [formData.categoryId, budgets])
+
+  const existingForSelection = budgets.find((b) => b.category_id === formData.categoryId)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    if (!formData.description || !formData.categoryId || formData.amount <= 0) {
-      toast.error('Preencha todos os campos obrigatórios')
+
+    if (!formData.categoryId) {
+      toast.error('Selecione uma categoria')
+      return
+    }
+
+    if (!formData.limitAmount || formData.limitAmount <= 0) {
+      toast.error('Informe um valor de meta maior que zero')
+      return
+    }
+
+    const alertPercentage = formData.alertPercentage.trim()
+      ? parseFloat(formData.alertPercentage)
+      : null
+
+    if (alertPercentage != null && (alertPercentage < 0 || alertPercentage > 100)) {
+      toast.error('Alerta deve estar entre 0 e 100%')
       return
     }
 
     try {
-      const transactionData = {
-        description: formData.description,
-        amount: formData.amount,
-        type: formData.type,
+      await upsertBudget({
         category_id: formData.categoryId,
-        transaction_date: formData.transactionDate,
-      }
+        mesReferencia: formData.mesReferencia,
+        limit_amount: formData.limitAmount,
+        alert_percentage: alertPercentage,
+      })
 
-      await addTransaction(transactionData)
-      
-      toast.success('Transação criada com sucesso!')
-      router.push('/transactions')
+      toast.success(
+        existingForSelection
+          ? 'Meta atualizada para este mês!'
+          : 'Meta definida com sucesso!'
+      )
+      router.push('/budgets')
     } catch (error) {
-      toast.error((error as Error).message)
+      toast.error((error as Error).message || 'Erro ao salvar meta')
     }
   }
 
-  const handleInputChange = (field: keyof TransactionFormData, value: string | number) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
-
-  // Filtra categorias baseadas no tipo selecionado
-  const filteredCategories = categories.filter(cat => cat.type === formData.type)
-
   return (
     <div className="container mx-auto py-6">
-      <div className="max-w-2xl mx-auto">
-        <Card>
+      <div className="max-w-xl mx-auto">
+        <Card className="border-border/50 shadow-md">
           <CardHeader>
-            <CardTitle>Nova Transação</CardTitle>
-            <CardDescription>
-              Adicione uma nova entrada ou saída ao seu controle financeiro
-            </CardDescription>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                <Target className="h-5 w-5" />
+              </div>
+              <div>
+                <CardTitle>Definir Meta Mensal</CardTitle>
+                <CardDescription>
+                  Benchmark de gastos por categoria — competência{' '}
+                  {formatMesReferenciaLabel(formData.mesReferencia)}
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-4">
-                {/* Tipo */}
-                <div className="space-y-2">
-                  <label htmlFor="type" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Tipo *
-                  </label>
-                  <Select 
-                    value={formData.type} 
-                    onValueChange={(value: 'income' | 'expense') => handleInputChange('type', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="income">Receita</SelectItem>
-                      <SelectItem value="expense">Despesa</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Descrição */}
-                <div className="space-y-2">
-                  <label htmlFor="description" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Descrição *
-                  </label>
-                  <Input
-                    id="description"
-                    placeholder="Ex: Aluguel, Salário, Mercado..."
-                    value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    required
-                  />
-                </div>
-
-                {/* Valor */}
-                <div className="space-y-2">
-                  <label htmlFor="amount" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Valor (R$) *
-                  </label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0,00"
-                    value={formData.amount || ''}
-                    onChange={(e) => handleInputChange('amount', parseFloat(e.target.value) || 0)}
-                    required
-                  />
-                </div>
-
-                {/* Categoria */}
-                <div className="space-y-2">
-                  <label htmlFor="category" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Categoria *
-                  </label>
-                  <Select 
-                    value={formData.categoryId} 
-                    onValueChange={(value) => handleInputChange('categoryId', value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione uma categoria" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredCategories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Data */}
-                <div className="space-y-2">
-                  <label htmlFor="transactionDate" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                    Data *
-                  </label>
-                  <Input
-                    id="transactionDate"
-                    type="date"
-                    value={formData.transactionDate}
-                    onChange={(e) => handleInputChange('transactionDate', e.target.value)}
-                    required
-                  />
-                </div>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="mesReferencia">Mês de referência *</Label>
+                <Select
+                  value={formData.mesReferencia}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, mesReferencia: value, categoryId: '' }))
+                  }
+                >
+                  <SelectTrigger id="mesReferencia">
+                    <SelectValue placeholder="Selecione a competência" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {monthOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Persistido como {formData.mesReferencia}-01 no banco
+                </p>
               </div>
 
-              <div className="flex gap-4 pt-4">
+              <div className="space-y-2">
+                <Label htmlFor="category">Categoria *</Label>
+                <Select
+                  value={formData.categoryId}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      categoryId: value,
+                      limitAmount: 0,
+                      alertPercentage: '',
+                    }))
+                  }
+                >
+                  <SelectTrigger id="category">
+                    <SelectValue placeholder="Selecione a categoria de despesa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {expenseCategories.map((category) => {
+                      const hasBudget = budgets.some((b) => b.category_id === category.id)
+                      return (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                          {hasBudget ? ' (meta existente — será atualizada)' : ''}
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+                {existingForSelection && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+                    Já existe meta para esta categoria em{' '}
+                    {formatMesReferenciaLabel(formData.mesReferencia)}. Ao salvar, o valor será
+                    atualizado (upsert).
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="limitAmount">Valor do teto / benchmark (R$) *</Label>
+                <Input
+                  id="limitAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0,00"
+                  value={formData.limitAmount || ''}
+                  onChange={(e) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      limitAmount: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="alertPercentage">Alerta visual (% do teto)</Label>
+                <Input
+                  id="alertPercentage"
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="Ex: 80 (opcional)"
+                  value={formData.alertPercentage}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, alertPercentage: e.target.value }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Quando o gasto real atingir este percentual, o card exibirá aviso
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => router.push('/transactions')}
+                  className="flex-1"
+                  onClick={() => router.push('/budgets')}
                   disabled={loading}
                 >
                   Cancelar
                 </Button>
-                <Button 
-                  type="submit" 
-                  disabled={loading}
-                >
-                  {loading ? 'Criando...' : 'Criar Transação'}
+                <Button type="submit" className="flex-1" disabled={loading}>
+                  {loading
+                    ? 'Salvando...'
+                    : existingForSelection
+                      ? 'Atualizar Meta'
+                      : 'Salvar Meta'}
                 </Button>
               </div>
             </form>
@@ -187,5 +256,19 @@ export default function NewTransactionPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function NewBudgetPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="container mx-auto py-6 text-center text-muted-foreground">
+          Carregando formulário...
+        </div>
+      }
+    >
+      <NewBudgetForm />
+    </Suspense>
   )
 }
