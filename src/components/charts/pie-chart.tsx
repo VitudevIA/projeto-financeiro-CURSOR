@@ -1,6 +1,7 @@
 'use client'
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
+import type { PieLabelRenderProps } from 'recharts'
 import { formatCurrency } from '@/utils/helpers'
 import { cn } from '@/lib/utils'
 
@@ -37,22 +38,20 @@ export default function PieChartComponent({
     onCategoryClick(nextId, entry.name)
   }
 
-  const renderCustomizedLabel = ({
-    cx,
-    cy,
-    midAngle,
-    innerRadius,
-    outerRadius,
-    percent,
-  }: {
-    cx: number
-    cy: number
-    midAngle: number
-    innerRadius: number
-    outerRadius: number
-    percent: number
-  }) => {
-    if (percent < 0.05) return null
+  const renderCustomizedLabel = (props: PieLabelRenderProps) => {
+    const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props
+    const pct = typeof percent === 'number' ? percent : 0
+
+    if (
+      pct < 0.05 ||
+      typeof cx !== 'number' ||
+      typeof cy !== 'number' ||
+      typeof midAngle !== 'number' ||
+      typeof innerRadius !== 'number' ||
+      typeof outerRadius !== 'number'
+    ) {
+      return null
+    }
 
     const RADIAN = Math.PI / 180
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5
@@ -68,7 +67,7 @@ export default function PieChartComponent({
         dominantBaseline="central"
         className="text-xs font-medium"
       >
-        {`${(percent * 100).toFixed(0)}%`}
+        {`${(pct * 100).toFixed(0)}%`}
       </text>
     )
   }
@@ -77,11 +76,13 @@ export default function PieChartComponent({
     return null
   }
 
+  const chartData = data as Array<PieChartDataItem & Record<string, string | number>>
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <PieChart>
         <Pie
-          data={data}
+          data={chartData}
           cx="50%"
           cy="50%"
           labelLine={false}
