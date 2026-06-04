@@ -11,7 +11,11 @@ import * as XLSX from 'xlsx'
 import { extractTextFromPDF, parseCreditCardBill, ExtractedTransaction } from '@/utils/pdf-parser'
 import { recognizeCategory, recognizeCategoryLegacy, type Category } from '@/utils/category-recognition'
 import { TransactionDeduplicationService, type TransactionForDeduplication } from '@/services/transaction-deduplication-service'
-import { resolveMesReferenciaForImport, isValidMesReferencia } from '@/utils/mes-referencia'
+import {
+  resolveMesReferenciaForImport,
+  isValidMesReferencia,
+  addMonthsToMesReferencia,
+} from '@/utils/mes-referencia'
 import { buildDynamicInstallmentDescription } from '@/utils/installment-description'
 
 function buildImportDuplicateKey(
@@ -690,103 +694,115 @@ export async function POST(request: NextRequest) {
         const importSequence =
           (transaction as { _sequence_number?: number })._sequence_number ?? null
 
-        // Se deve gerar automaticamente as parcelas futuras
+        const purchaseDateStr = formatDate(String(transaction.data))
+        const billMesReferencia = defaultMesReferencia
+
+        // Se deve gerar automaticamente as parcelas futuras (saldo remanescente)
         if (shouldAutoGenerateInstallments) {
-          // Calcula o valor de cada parcela
-          // IMPORTANTE: Para PDFs, o valor já é da parcela individual, então usa esse valor
-          // Para outros formatos, divide o valor total pelo número de parcelas
           const installmentAmount = isFromPDF ? amount : (amount / totalInstallments!)
-          // Força horário local ao meio-dia para evitar que UTC-3 retroceda a data ao dia anterior
-          const baseDate = new Date(formatDate(String(transaction.data)) + 'T12:00:00')
           let installmentsCreated = 0
           const installmentErrors: string[] = []
 
-          // LÓGICA: 
-          // - Se é PDF: a parcela atual já está sendo criada abaixo (no else), então só cria as FUTURAS
-          //   Exemplo: Se parcela atual é 3/05, cria apenas 4/05 e 5/05 (começa do currentInstallment + 1)
-          // - Se não é PDF e parcela atual é 1: cria todas as parcelas (1, 2, 3, ...)
-          // - Se não é PDF e parcela atual > 1: cria a parcela atual + futuras
-          const startIndex = isFromPDF 
-            ? currentInstallment // Para PDFs, começa da parcela seguinte (a atual já será criada abaixo)
-            : (currentInstallment === 1 ? 0 : currentInstallment - 1) // Para outros formatos, inclui a atual se não for 1
-          const endIndex = totalInstallments!
-          
-          // Para PDFs, só cria parcelas FUTURAS (não inclui a atual)
-          // Para outros formatos, cria a partir da atual
-          const actualStartIndex = isFromPDF ? currentInstallment : startIndex
+          if (isFromPDF) {
+            // PDF: projeta apenas parcelas C+1 … T; a parcela C é criada no bloco abaixo
+            for (let i = currentInstallment + 1; i <= totalInstallments!; i++) {
+              const monthsAhead = i - currentInstallment
+              const projectedMesReferencia = addMonthsToMesReferencia(
+                billMesReferencia,
+                monthsAhead
+              )
+              const installmentDescription = buildDynamicInstallmentDescription(
+                String(transaction.descricao),
+                i,
+                totalInstallments!
+              )
+              const finalCardIdForInstallment =
+                validatedMethod === 'credit' || validatedMethod === 'debit' ? cardId : null
 
-          // Cria as parcelas automaticamente
-          // Para PDFs: começa da parcela seguinte (currentInstallment), então cria apenas as FUTURAS
-          //   Exemplo: Se parcela atual é 3/05, currentInstallment = 3, então:
-          //   - Loop começa de i = 3 (mas pula para 4, 5)
-          //   - Parcela 4 = baseDate + (4 - 3) meses = baseDate + 1 mês
-          //   - Parcela 5 = baseDate + (5 - 3) meses = baseDate + 2 meses
-          // Para outros formatos: cria a partir da parcela atual
-          for (let i = actualStartIndex; i < endIndex; i++) {
-            const installmentDate = new Date(baseDate)
-            const currentInstallmentNumber = i + 1
-            
-            // Para PDFs: calcula a diferença de meses a partir da parcela atual
-            // Para outros formatos: calcula a partir do índice (0 = mês atual, 1 = próximo mês, etc.)
-            if (isFromPDF) {
-              // Se parcela atual é 3, e estamos criando parcela 4:
-              // - Diferença = 4 - 3 = 1 mês
-              // - Diferença = 5 - 3 = 2 meses
-              const monthsDiff = currentInstallmentNumber - currentInstallment
-              installmentDate.setMonth(installmentDate.getMonth() + monthsDiff)
-            } else {
-              // Para outros formatos: se parcela atual é 1, i começa de 0 (mês atual)
-              // Se parcela atual é 3, i começa de 2 (mês atual + 2 = parcela 3)
+              const insertResult = await tryInsertTransaction({
+                user_id: user.id,
+                description: installmentDescription,
+                amount: installmentAmount,
+                type: 'expense',
+                category_id: categoryId,
+                transaction_date: purchaseDateStr,
+                mes_referencia: projectedMesReferencia,
+                payment_method: validatedMethod,
+                card_id: finalCardIdForInstallment,
+                expense_nature: 'installment',
+                installment_number: i,
+                total_installments: totalInstallments,
+                import_sequence: importSequence,
+                notes: transaction.observacoes || null,
+              })
+
+              if (insertResult === 'error') {
+                installmentErrors.push(`Parcela ${i}/${totalInstallments}: falha ao inserir`)
+              } else if (insertResult === 'ignored') {
+                ignoredDuplicateCount++
+              } else {
+                installmentsCreated++
+              }
+            }
+          } else {
+            // CSV/XLSX: mantém geração a partir da parcela atual (ou da 1ª quando C=1)
+            const baseDate = new Date(purchaseDateStr + 'T12:00:00')
+            const startIndex =
+              currentInstallment === 1 ? 0 : currentInstallment - 1
+
+            for (let i = startIndex; i < totalInstallments!; i++) {
+              const installmentNumberForRow = i + 1
+              const installmentDate = new Date(baseDate)
               const monthsDiff = i - (currentInstallment === 1 ? 0 : currentInstallment - 1)
               installmentDate.setMonth(installmentDate.getMonth() + monthsDiff)
-            }
 
-            const installmentDescription = buildDynamicInstallmentDescription(
-              String(transaction.descricao),
-              currentInstallmentNumber,
-              totalInstallments!
-            )
+              const installmentDescription = buildDynamicInstallmentDescription(
+                String(transaction.descricao),
+                installmentNumberForRow,
+                totalInstallments!
+              )
+              const finalCardIdForInstallment =
+                validatedMethod === 'credit' || validatedMethod === 'debit' ? cardId : null
 
-            // IMPORTANTE: card_id deve ser null para métodos que não são crédito/débito
-            const finalCardIdForInstallment = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
-            
-            // Extrai data usando métodos locais para preservar o dia correto (evita desvio UTC)
-            const iy = installmentDate.getFullYear()
-            const im = String(installmentDate.getMonth() + 1).padStart(2, '0')
-            const id = String(installmentDate.getDate()).padStart(2, '0')
-            const installmentDateStr = `${iy}-${im}-${id}`
-            const installmentMesReferencia = resolveMesReferenciaForImport({
-              transactionDate: installmentDateStr,
-              paymentMethod: validatedMethod,
-              explicit: transaction.mes_referencia,
-              defaultFromImport: defaultMesReferencia,
-              installmentNumber: currentInstallmentNumber,
-              totalInstallments,
-            })
+              const iy = installmentDate.getFullYear()
+              const im = String(installmentDate.getMonth() + 1).padStart(2, '0')
+              const id = String(installmentDate.getDate()).padStart(2, '0')
+              const installmentDateStr = `${iy}-${im}-${id}`
+              const installmentMesReferencia = resolveMesReferenciaForImport({
+                transactionDate: installmentDateStr,
+                paymentMethod: validatedMethod,
+                explicit: transaction.mes_referencia,
+                defaultFromImport: billMesReferencia,
+                installmentNumber: installmentNumberForRow,
+                totalInstallments,
+              })
 
-            const insertResult = await tryInsertTransaction({
-              user_id: user.id,
-              description: installmentDescription,
-              amount: installmentAmount,
-              type: 'expense',
-              category_id: categoryId,
-              transaction_date: installmentDateStr,
-              mes_referencia: installmentMesReferencia,
-              payment_method: validatedMethod,
-              card_id: finalCardIdForInstallment,
-              expense_nature: 'installment',
-              installment_number: currentInstallmentNumber,
-              total_installments: totalInstallments,
-              import_sequence: importSequence,
-              notes: transaction.observacoes || null,
-            })
+              const insertResult = await tryInsertTransaction({
+                user_id: user.id,
+                description: installmentDescription,
+                amount: installmentAmount,
+                type: 'expense',
+                category_id: categoryId,
+                transaction_date: installmentDateStr,
+                mes_referencia: installmentMesReferencia,
+                payment_method: validatedMethod,
+                card_id: finalCardIdForInstallment,
+                expense_nature: 'installment',
+                installment_number: installmentNumberForRow,
+                total_installments: totalInstallments,
+                import_sequence: importSequence,
+                notes: transaction.observacoes || null,
+              })
 
-            if (insertResult === 'error') {
-              installmentErrors.push(`Parcela ${currentInstallmentNumber}/${totalInstallments}: falha ao inserir`)
-            } else if (insertResult === 'ignored') {
-              ignoredDuplicateCount++
-            } else {
-              installmentsCreated++
+              if (insertResult === 'error') {
+                installmentErrors.push(
+                  `Parcela ${installmentNumberForRow}/${totalInstallments}: falha ao inserir`
+                )
+              } else if (insertResult === 'ignored') {
+                ignoredDuplicateCount++
+              } else {
+                installmentsCreated++
+              }
             }
           }
 
@@ -797,9 +813,6 @@ export async function POST(request: NextRequest) {
             errorCount += installmentErrors.length
             errors.push(`${transaction.descricao}: ${installmentErrors.join('; ')}`)
           }
-          
-          // IMPORTANTE: Se é PDF, a parcela atual será criada no bloco abaixo
-          // (as parcelas futuras já foram criadas no loop acima)
         }
         
         // Cria a transação atual
@@ -831,16 +844,20 @@ export async function POST(request: NextRequest) {
           // IMPORTANTE: card_id deve ser null para métodos que não são crédito/débito
           const finalCardIdForInsert = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
           
-          const transactionDateStr = formatDate(String(transaction.data))
+          const transactionDateStr = purchaseDateStr
           const isMultiInstallment = Boolean(totalInstallments && totalInstallments > 1)
-          const transactionMesReferencia = resolveMesReferenciaForImport({
-            transactionDate: transactionDateStr,
-            paymentMethod: validatedMethod,
-            explicit: transaction.mes_referencia,
-            defaultFromImport: defaultMesReferencia,
-            installmentNumber: isMultiInstallment ? installmentNumber : null,
-            totalInstallments: isMultiInstallment ? totalInstallments : null,
-          })
+          // PDF parcelado: parcela lida na fatura herda SEMPRE o mês de referência da importação
+          const transactionMesReferencia =
+            isFromPDF && isMultiInstallment
+              ? billMesReferencia
+              : resolveMesReferenciaForImport({
+                  transactionDate: transactionDateStr,
+                  paymentMethod: validatedMethod,
+                  explicit: transaction.mes_referencia,
+                  defaultFromImport: billMesReferencia,
+                  installmentNumber: isMultiInstallment ? installmentNumber : null,
+                  totalInstallments: isMultiInstallment ? totalInstallments : null,
+                })
 
           const insertResult = await tryInsertTransaction({
             user_id: user.id,
