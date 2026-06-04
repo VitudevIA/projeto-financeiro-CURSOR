@@ -98,14 +98,28 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 }
 
 /**
+ * Camada 0: sanitização volátil em memória para busca/cruzamento.
+ * Nunca persista o retorno desta função — a descrição bruta da fatura vai ao banco.
+ */
+function sanitizeDescriptionForMatching(description: string): string {
+  return description
+    .replace(/^(?:EC|MP|DM|PIX|PG|COMPRA|PAGAMENTO)\s*\*\s*/gi, '')
+    .replace(/(?:PARC\s*)?\(?(\d{1,2})\s*[\/de\s]+\s*(\d{1,2})\)?/gi, '')
+    .replace(/\s\(?(\d{1,2})\/(\d{1,2})\)?/g, '')
+    .replace(/\s\(\d{1,2}\/\d{1,2}\)\s*$/g, '')
+    .replace(/\*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
  * Normaliza texto removendo acentos e convertendo para lowercase
  */
 function normalizeText(text: string): string {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 }
-
 /**
- * Calcula similaridade entre duas strings usando algoritmo de Levenshtein simplificado
+ * Calcula similaridade entre duas strings (já sanitizadas/normalizadas)
  */
 function calculateSimilarity(str1: string, str2: string): number {
   const s1 = normalizeText(str1)
@@ -127,67 +141,71 @@ function calculateSimilarity(str1: string, str2: string): number {
 }
 
 /**
- * Busca categoria usando histórico de transações do usuário
+ * Camada 1: busca categoria no histórico do usuário usando termos sanitizados
  */
 function findCategoryFromHistory(
-  description: string,
+  sanitizedDescription: string,
   history: TransactionHistory[]
 ): { categoryId: string; categoryName: string; confidence: number } | null {
   if (!history || history.length === 0) return null
+  if (!sanitizedDescription || sanitizedDescription.length < 2) return null
 
-  const normalizedDesc = normalizeText(description)
-  
-  // Agrupa por categoria e calcula score
+  const normalizedCurrent = normalizeText(sanitizedDescription)
+
   const categoryScores = new Map<string, { count: number; totalSimilarity: number; categoryName: string }>()
-  
+
   for (const transaction of history) {
-    const similarity = calculateSimilarity(description, transaction.description)
-    
+    const sanitizedHistory = sanitizeDescriptionForMatching(transaction.description)
+    if (!sanitizedHistory) continue
+
+    const normalizedHistory = normalizeText(sanitizedHistory)
+    const similarity = calculateSimilarity(normalizedCurrent, normalizedHistory)
+
     if (similarity > 0.3) {
       const existing = categoryScores.get(transaction.category_id) || {
         count: 0,
         totalSimilarity: 0,
-        categoryName: transaction.category_name
+        categoryName: transaction.category_name,
       }
-      
+
       existing.count++
       existing.totalSimilarity += similarity
       categoryScores.set(transaction.category_id, existing)
     }
   }
-  
-  // Encontra categoria com maior score
+
   let bestMatch: { categoryId: string; categoryName: string; confidence: number } | null = null
   let bestScore = 0
-  
+
   for (const [categoryId, data] of categoryScores.entries()) {
     const avgSimilarity = data.totalSimilarity / data.count
-    const frequencyBonus = Math.min(data.count / 10, 0.3) // Bonus de até 30% por frequência
+    const frequencyBonus = Math.min(data.count / 10, 0.3)
     const score = avgSimilarity + frequencyBonus
-    
+
     if (score > bestScore && score > 0.5) {
       bestScore = score
       bestMatch = {
         categoryId,
         categoryName: data.categoryName,
-        confidence: score
+        confidence: score,
       }
     }
   }
-  
+
   return bestMatch
 }
 
 /**
- * Busca categoria usando palavras-chave e match por nome
+ * Camada 2: dicionário global de palavras-chave + match por nome de categoria
  */
 function findCategoryByKeywords(
-  description: string,
+  sanitizedDescription: string,
   categories: Category[]
 ): { categoryId: string; categoryName: string; confidence: number } | null {
   if (!categories || categories.length === 0) return null
+  if (!sanitizedDescription) return null
 
-  const normalizedDesc = normalizeText(description)
+  const normalizedDesc = normalizeText(sanitizedDescription)
   
   // 1. Tenta match exato ou parcial no nome da categoria
   for (const category of categories) {
@@ -243,7 +261,7 @@ function findCategoryByKeywords(
   let bestSimilarity = 0
   
   for (const category of categories) {
-    const similarity = calculateSimilarity(description, category.name)
+    const similarity = calculateSimilarity(sanitizedDescription, category.name)
     if (similarity > bestSimilarity && similarity > 0.4) {
       bestSimilarity = similarity
       bestMatch = {
@@ -258,8 +276,8 @@ function findCategoryByKeywords(
 }
 
 /**
- * Reconhece categoria baseada na descrição da transação
- * Versão melhorada que usa categorias reais do usuário e histórico
+ * Reconhece categoria baseada na descrição bruta da transação.
+ * A sanitização ocorre apenas em memória; a descrição original nunca é alterada.
  */
 export async function recognizeCategory(
   description: string,
@@ -270,27 +288,28 @@ export async function recognizeCategory(
     return { categoryId: null, categoryName: null, confidence: 0 }
   }
 
-  // 1. Tenta usar histórico primeiro (mais preciso)
+  const sanitizedForMatching = sanitizeDescriptionForMatching(description)
+
+  // Camada 1: histórico do usuário (aprendizado por estabelecimento)
   if (history && history.length > 0) {
-    const historyMatch = findCategoryFromHistory(description, history)
+    const historyMatch = findCategoryFromHistory(sanitizedForMatching, history)
     if (historyMatch && historyMatch.confidence > 0.6) {
       return {
         categoryId: historyMatch.categoryId,
         categoryName: historyMatch.categoryName,
-        confidence: historyMatch.confidence
+        confidence: historyMatch.confidence,
       }
     }
   }
 
-  // 2. Tenta usar palavras-chave e match por nome
+  // Camada 2: dicionário global de palavras-chave
   if (categories && categories.length > 0) {
-    const keywordMatch = findCategoryByKeywords(description, categories)
+    const keywordMatch = findCategoryByKeywords(sanitizedForMatching, categories)
     if (keywordMatch) {
       return keywordMatch
     }
   }
 
-  // 3. Fallback: retorna null (deixa o sistema criar categoria padrão)
   return { categoryId: null, categoryName: null, confidence: 0 }
 }
 
@@ -301,7 +320,7 @@ export async function recognizeCategory(
 export function recognizeCategoryLegacy(description: string): string {
   if (!description) return 'Outros'
 
-  const normalizedDesc = normalizeText(description)
+  const normalizedDesc = normalizeText(sanitizeDescriptionForMatching(description))
 
   // Verifica cada categoria e suas palavras-chave
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {

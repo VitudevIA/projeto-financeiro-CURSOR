@@ -282,6 +282,7 @@ export type Database = {
           expense_nature: string | null
           id: string
           installment_number: number | null
+          import_sequence: number | null
           is_recurring: boolean | null
           notes: string | null
           payment_method: string
@@ -302,6 +303,7 @@ export type Database = {
           expense_nature?: string | null
           id?: string
           installment_number?: number | null
+          import_sequence?: number | null
           is_recurring?: boolean | null
           notes?: string | null
           payment_method?: string
@@ -322,6 +324,7 @@ export type Database = {
           expense_nature?: string | null
           id?: string
           installment_number?: number | null
+          import_sequence?: number | null
           is_recurring?: boolean | null
           notes?: string | null
           payment_method?: string

@@ -141,7 +141,7 @@ export class BankStatementParserFactory {
       
       if (transactions.length > 0) {
         console.log(`[Parser Factory] ✅ ${transactions.length} transações extraídas pelo ${parser.bankName}`)
-        return transactions
+        return transactions.map((t, i) => ({ ...t, sequence_number: i }))
       } else {
         console.warn(`[Parser Factory] ⚠️ Parser ${parser.bankName} não encontrou transações (array vazio)`)
         console.log(`[Parser Factory] Debug: Primeiras 1000 caracteres do texto processado:`, text.substring(0, 1000))

@@ -5,6 +5,9 @@
 
 import { extractTextFromPDFServer } from './pdf-parser-server'
 import { BankStatementParserFactory } from './parsers/parser-factory'
+import { preprocessPicPayBillText } from './parsers/picpay/picpay-parser'
+
+export { preprocessPicPayBillText } from './parsers/picpay/picpay-parser'
 
 /**
  * Extrai texto de um arquivo PDF
@@ -12,12 +15,10 @@ import { BankStatementParserFactory } from './parsers/parser-factory'
  */
 export async function extractTextFromPDF(file: File): Promise<string> {
   try {
-    // Valida se o arquivo é válido
     if (!file || !(file instanceof File)) {
       throw new Error('Arquivo inválido fornecido')
     }
 
-    // Valida tamanho do arquivo (limite de 10MB para PDFs)
     const MAX_SIZE = 10 * 1024 * 1024 // 10MB
     if (file.size > MAX_SIZE) {
       throw new Error(`Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(2)}MB). Tamanho máximo permitido: 10MB`)
@@ -27,14 +28,11 @@ export async function extractTextFromPDF(file: File): Promise<string> {
       throw new Error('Arquivo vazio fornecido')
     }
 
-    // Valida tipo MIME
     if (file.type && !file.type.includes('pdf') && !file.name.toLowerCase().endsWith('.pdf')) {
       throw new Error('Arquivo não é um PDF válido')
     }
 
-    // No servidor (Node.js), usa pdf-parse que é mais compatível
     if (typeof window === 'undefined') {
-      // Converte File para ArrayBuffer e depois para Buffer
       let arrayBuffer: ArrayBuffer
       try {
         arrayBuffer = await file.arrayBuffer()
@@ -42,21 +40,16 @@ export async function extractTextFromPDF(file: File): Promise<string> {
         throw new Error(`Erro ao ler arquivo: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
       }
       
-      // Valida ArrayBuffer
       if (!arrayBuffer || arrayBuffer.byteLength === 0) {
         throw new Error('ArrayBuffer vazio ou inválido')
       }
 
-      // Cria Buffer a partir do ArrayBuffer usando método seguro
-      // IMPORTANTE: Garante que é um Buffer válido do Node.js, não uma string ou caminho
       let buffer: Buffer
       try {
-        // Método 1: Buffer.from com Uint8Array (mais seguro)
         const uint8Array = new Uint8Array(arrayBuffer)
         buffer = Buffer.from(uint8Array)
       } catch (bufferError) {
         try {
-          // Método 2: Fallback direto (caso método 1 falhe)
           buffer = Buffer.from(arrayBuffer)
         } catch (fallbackError) {
           throw new Error(
@@ -67,7 +60,6 @@ export async function extractTextFromPDF(file: File): Promise<string> {
         }
       }
       
-      // Validações críticas do Buffer
       if (!buffer) {
         throw new Error('Buffer é null ou undefined')
       }
@@ -80,12 +72,10 @@ export async function extractTextFromPDF(file: File): Promise<string> {
         throw new Error('Buffer vazio')
       }
 
-      // Valida que não é uma string disfarçada de Buffer (segurança extra)
       if (typeof buffer === 'string') {
         throw new Error('Buffer é uma string (erro na conversão)')
       }
 
-      // Log para debug (remover em produção se necessário)
       console.log('[PDF Parser] Buffer criado com sucesso:', {
         bufferType: Buffer.isBuffer(buffer) ? 'Buffer válido' : 'Inválido',
         bufferLength: buffer.length,
@@ -93,11 +83,8 @@ export async function extractTextFromPDF(file: File): Promise<string> {
         fileSize: file.size,
       })
 
-      // Usa função auxiliar que usa require diretamente
       return await extractTextFromPDFServer(buffer)
     } else {
-      // No cliente (browser), o processamento de PDF deve ser feito no servidor
-      // Esta função não deve ser chamada no cliente em produção
       throw new Error(
         'Processamento de PDF no cliente não é suportado. ' +
         'O processamento deve ser feito no servidor através da API route. ' +
@@ -105,13 +92,10 @@ export async function extractTextFromPDF(file: File): Promise<string> {
       )
     }
   } catch (error) {
-    // Evita encadear mensagens de erro
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
-    
     if (errorMessage.includes('Erro ao processar PDF:')) {
       throw error
     }
-    
     console.error('Erro ao extrair texto do PDF:', errorMessage)
     throw new Error(`Erro ao processar PDF: ${errorMessage}`)
   }
@@ -128,182 +112,186 @@ export interface ExtractedTransaction {
     current: number
     total: number
   } | null
+  /** Posição sequencial na fatura (0 = primeira linha lida de cima para baixo) */
+  sequence_number?: number
 }
 
 /**
  * Extrai transações de uma fatura de cartão de crédito
- * Usa Factory Pattern para detectar automaticamente o banco e usar o parser apropriado
  */
 export function parseCreditCardBill(text: string): ExtractedTransaction[] {
-  console.log('[PDF Parser] Iniciando parseCreditCardBill')
-  console.log(`[PDF Parser] Tamanho do texto recebido: ${text.length} caracteres`)
+  console.log('[PDF Parser] Iniciando parseCreditCardBill Multi-Linha Avançado')
+  console.log(`[PDF Parser] Tamanho do texto bruto recebido: ${text.length} caracteres`)
+
+  const isPicPay = text.toLowerCase().includes('picpay') || text.toLowerCase().includes('picpay card')
+  const preparedText = isPicPay ? preprocessPicPayBillText(text) : text
   
-  // Usa Factory para detectar e usar o parser apropriado
-  try {
-    const transactions = BankStatementParserFactory.parse(text)
-    
-    if (transactions && Array.isArray(transactions) && transactions.length > 0) {
-      console.log(`[PDF Parser] ✅ ${transactions.length} transações encontradas pelo parser específico`)
-      return transactions
-    }
-    
-    // Se não encontrou transações, tenta parser genérico
-    console.log('[PDF Parser] ⚠️ Parser específico não encontrou transações, tentando parser genérico...')
-  } catch (error) {
-    console.error('[PDF Parser] ❌ Erro no parser específico, tentando genérico:', error)
-    console.error('[PDF Parser] Stack trace:', error instanceof Error ? error.stack : 'N/A')
-    // Continua para tentar parser genérico
+  if (isPicPay) {
+    console.log(`[PDF Parser] Detectado PicPay. Tamanho após pré-processamento: ${preparedText.length} caracteres`)
   }
   
-  console.log('[PDF Parser] Usando parser genérico como fallback...')
+  // Tenta parser específico da Factory primeiro
+  try {
+    const transactions = BankStatementParserFactory.parse(preparedText)
+    
+    if (transactions && Array.isArray(transactions) && transactions.length > 0) {
+      console.log(`[PDF Parser] ✅ SUCESSO: ${transactions.length} transações extraídas via Parser Específico.`);
+      return transactions.map((t, i) => ({ ...t, sequence_number: t.sequence_number ?? i }))
+    }
+    console.log('[PDF Parser] ⚠️ Alerta: Parser específico retornou 0 transações. Acionando analisador adaptativo secundário...');
+  } catch (error) {
+    console.error('[PDF Parser] ❌ Falha no parser específico, executando fallback adaptativo:', error)
+  }
+  
+  console.log('[PDF Parser] Executando Engine Adaptativa Multi-Linha...')
 
-  // Fallback para parser genérico (código original)
   const transactions: ExtractedTransaction[] = []
-
-  // Normaliza o texto: remove múltiplos espaços e quebras de linha
-  const normalizedText = text.replace(/\s+/g, ' ').trim()
-
-  // Padrões para identificar transações em faturas de cartão
-  // Padrão 1: Data DD/MM seguido de descrição e valor
-  // Exemplo: "15/01 COMPRA PADRÃO 150,50"
-  // Padrão 2: Data DD/MM/YYYY seguido de descrição e valor
-  // Exemplo: "15/01/2025 SUPERMERCADO ABC R$ 150,50"
   
-  // Regex para detectar linhas com data, descrição e valor
-  // Procura por padrões como:
-  // - DD/MM/YYYY ou DD/MM seguido de texto e R$ valor ou valor numérico
-  const datePattern = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/
-  const currencyPattern = /R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)|(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s*R\$/
-  
-  // Divide o texto em linhas potencialmente relevantes
-  const lines = text.split(/\n/).filter(line => line.trim().length > 0)
-
+  // Captura o ano de referência
   let currentYear = new Date().getFullYear()
-
-  // Procura pelo ano na fatura (geralmente no cabeçalho)
   const yearMatch = text.match(/\b(20\d{2})\b/)
   if (yearMatch) {
     currentYear = parseInt(yearMatch[1])
   }
 
+  // Divisão flexível de linhas limpas
+  const lines = preparedText.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0)
+  
+  // Padrões de Data estruturados
+  const dateOnlyPattern = /^(\d{1,2})\/(\d{1,2})$/ // Exato "DD/MM" sem nada do lado
+  const generalDatePattern = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/
+  const amountPattern = /^-?(\d{1,3}(?:\.\d{3})*(?:,\d{2}))$/ // Exato "11,50" ou "-13,00"
+
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim()
-    
-    // Ignora linhas muito curtas ou que são claramente cabeçalhos
-    if (line.length < 10) continue
-    if (line.match(/^(FATURA|RESUMO|CARTÃO|VENCIMENTO|TOTAL|SALDO)/i)) continue
-    
-    // Procura por data no início da linha
-    const dateMatch = line.match(datePattern)
+    const line = lines[i]
+
+    // -----------------------------------------------------------------------------------------
+    // INTEGRAÇÃO CASO CRÍTICO: Trata escada de dados (Linha 1: Data \n Linha 2: Descrição \n Linha 3: Valor)
+    // -----------------------------------------------------------------------------------------
+    if (dateOnlyPattern.test(line)) {
+      const dateMatch = line.match(dateOnlyPattern)!
+      const nextLine1 = lines[i + 1] ? lines[i + 1].trim() : ''
+      const nextLine2 = lines[i + 2] ? lines[i + 2].trim() : ''
+
+      // Validação: Se a linha +1 não for um valor, mas a linha +2 for um valor monetário puro
+      if (nextLine1 && nextLine2 && !amountPattern.test(nextLine1) && amountPattern.test(nextLine2)) {
+        const day = parseInt(dateMatch[1])
+        const month = parseInt(dateMatch[2])
+        
+        const amountStr = nextLine2.match(amountPattern)![1].replace(/\./g, '').replace(',', '.')
+        let amount = parseFloat(amountStr)
+        if (amount < 0) amount = Math.abs(amount)
+
+        if (amount && !isNaN(amount) && amount > 0) {
+          const formattedDate = `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          
+          // Captura parcelamento na própria linha de descrição se houver (Ex: "FUTURA PARC (1/6)")
+          let installments: { current: number; total: number } | null = null
+          const installmentPatterns = [/(\d{1,2})\s*\/\s*(\d{1,2})/, /(\d{1,2})\s+DE\s+(\d{1,2})/i]
+          for (const pattern of installmentPatterns) {
+            const match = nextLine1.match(pattern)
+            if (match) {
+              const current = parseInt(match[1])
+              const total = parseInt(match[2])
+              if (current && total && total > 1 && current <= total) {
+                installments = { current, total }
+                break
+              }
+            }
+          }
+
+          transactions.push({
+            date: formattedDate,
+            description: nextLine1.replace(/[|\\/]/g, '').trim(),
+            amount,
+            installments,
+          })
+
+          i += 2 // Avança o ponteiro do loop para pular a descrição e o valor processados
+          continue
+        }
+      }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // CASO TRADICIONAL: Tudo na mesma linha (DD/MM Descrição Valor)
+    // -----------------------------------------------------------------------------------------
+    const dateMatch = line.match(generalDatePattern)
     if (!dateMatch) continue
 
-    const day = parseInt(dateMatch[1])
-    const month = parseInt(dateMatch[2])
+    // Bloqueia leituras falsas de cabeçalhos institucionais com data
+    if (line.match(/(vencimento|fechamento|emitido em|pagar até|fatura de|total da fatura)/i) && !line.match(/R\$/i)) {
+      continue 
+    }
+    if (line.toLowerCase().includes('fatura anterior') || line.toLowerCase().includes('pagamento recebido')) continue
+
+    let day = parseInt(dateMatch[1])
+    let month = parseInt(dateMatch[2])
     let year = dateMatch[3] ? parseInt(dateMatch[3]) : currentYear
 
-    // Ajusta para o ano correto (se a data está no futuro, provavelmente é do ano passado)
     const parsedDate = new Date(year, month - 1, day)
     if (parsedDate > new Date()) {
       year = year - 1
     }
 
-    // Procura por valor monetário na linha
-    // Padrões: R$ 1.500,50 ou 1500,50 ou 1.500,50 R$
     let amount: number | null = null
     let amountStr = ''
 
-    // Primeiro tenta encontrar valores com R$
-    const currencyWithSymbol = line.match(/R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/i)
-    if (currencyWithSymbol) {
-      amountStr = currencyWithSymbol[1]
+    const monetaryValue = line.match(/(?:R\$\s*)?(-?\d{1,3}(?:\.\d{3})*(?:,\d{2}))/)
+    if (monetaryValue) {
+      amountStr = monetaryValue[1]
     } else {
-      // Tenta encontrar valores monetários no formato brasileiro (com vírgula decimal)
-      const monetaryValue = line.match(/(\d{1,3}(?:\.\d{3})*(?:,\d{2}))/)
-      if (monetaryValue) {
-        // Pega o último valor encontrado (geralmente é o valor da transação)
-        amountStr = monetaryValue[1]
-      } else {
-        // Fallback: procura por qualquer número com vírgula
-        const numbersWithComma = line.match(/(\d+,\d{2})/)
-        if (numbersWithComma) {
-          amountStr = numbersWithComma[1]
-        }
+      const numbersWithComma = line.match(/(-?\d+,\d{2})/)
+      if (numbersWithComma) {
+        amountStr = numbersWithComma[1]
       }
     }
 
     if (amountStr) {
-      // Converte formato brasileiro (1.500,50) para número
-      amountStr = amountStr.replace(/\./g, '').replace(',', '.')
-      amount = parseFloat(amountStr)
+      const cleanedAmountStr = amountStr.replace(/\./g, '').replace(',', '.')
+      amount = parseFloat(cleanedAmountStr)
+      if (amount < 0) amount = Math.abs(amount)
     }
 
     if (!amount || isNaN(amount) || amount <= 0) continue
 
-    // Extrai a descrição (tudo entre a data e o valor)
     const dateEndIndex = dateMatch.index! + dateMatch[0].length
     let description = line.substring(dateEndIndex).trim()
     
-    // Remove o valor da descrição
     if (amountStr) {
-      // Procura pela string do valor na linha
-      const valueIndex = line.lastIndexOf(amountStr.replace(/\./g, '').replace(',', '.'))
-      if (valueIndex > dateEndIndex) {
-        description = line.substring(dateEndIndex, valueIndex).trim()
-      } else {
-        // Tenta encontrar R$ seguido do valor
-        const r$Index = line.indexOf('R$', dateEndIndex)
-        if (r$Index > dateEndIndex) {
-          description = line.substring(dateEndIndex, r$Index).trim()
-        }
-      }
+      description = description.replace(amountStr, '').replace('R$', '').trim()
     }
-
-    // Remove prefixos comuns e limpa a descrição
+    
     description = description
+      .replace(/[|\\/]/g, '')
       .replace(/^(COMPRA|PAGAMENTO|DEBITO|CREDITO|TRANSFERENCIA|SAQUE)\s*/i, '')
       .replace(/\s+/g, ' ')
       .trim()
 
-    if (!description || description.length < 3) continue
+    if (!description || description.length < 2) continue
 
-    // Verifica se é parcelado
-    // Procura por padrões como "01/10", "1 DE 10", "PARCELA 1/10", etc.
     let installments: { current: number; total: number } | null = null
-    
-    // Verifica na linha atual e nas próximas 2 linhas
     const searchText = [line, lines[i + 1] || '', lines[i + 2] || ''].join(' ')
     
-    // Padrões de parcelamento
     const installmentPatterns = [
-      /(\d{1,2})\s*\/\s*(\d{1,2})/g, // "01/10"
-      /(\d{1,2})\s+DE\s+(\d{1,2})/gi, // "1 DE 10"
-      /PARCELA\s+(\d{1,2})\s*\/\s*(\d{1,2})/gi, // "PARCELA 1/10"
-      /(\d{1,2})X/gi, // "10X" (total de parcelas)
-      /(\d{1,2})\s*X\s*DE\s*R\$/gi, // "10 X DE R$"
+      /(\d{1,2})\s*\/\s*(\d{1,2})/,
+      /(\d{1,2})\s+DE\s+(\d{1,2})/i,
+      /PARCELA\s+(\d{1,2})\s*\/\s*(\d{1,2})/i,
+      /(\d{1,2})X/i
     ]
 
     for (const pattern of installmentPatterns) {
-      const matches = [...searchText.matchAll(pattern)]
-      for (const match of matches) {
+      const match = searchText.match(pattern)
+      if (match) {
         const current = parseInt(match[1])
         const total = parseInt(match[2] || match[1])
-        
         if (current && total && total > 1 && current <= total) {
           installments = { current, total }
           break
         }
-        
-        // Caso especial: só tem o total (ex: "10X")
-        if (total && total > 1 && !match[2]) {
-          // Se encontrarmos "10X", provavelmente é a primeira parcela
-          installments = { current: 1, total }
-          break
-        }
       }
-      if (installments) break
     }
 
-    // Formata a data para YYYY-MM-DD
     const formattedDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 
     transactions.push({
@@ -314,7 +302,7 @@ export function parseCreditCardBill(text: string): ExtractedTransaction[] {
     })
   }
 
-  // Remove duplicatas (mesma data, descrição e valor)
+  // Consolidação final eliminando duplicatas exatas geradas por resquícios do parser
   const uniqueTransactions = transactions.filter((trans, index, self) =>
     index === self.findIndex((t) =>
       t.date === trans.date &&
@@ -323,6 +311,6 @@ export function parseCreditCardBill(text: string): ExtractedTransaction[] {
     )
   )
 
-  return uniqueTransactions
+  console.log(`[PDF Parser] Processamento Finalizado. ${uniqueTransactions.length} registros prontos para inserção.`);
+  return uniqueTransactions.map((t, i) => ({ ...t, sequence_number: i }))
 }
-

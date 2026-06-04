@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTransactionsStore } from '@/lib/stores/transactions-store'
 import { useRecurringIncomesStore } from '@/lib/stores/recurring-incomes-store'
 import { useCardsStore } from '@/lib/stores/cards-store'
@@ -15,8 +15,9 @@ import { Plus, Trash2, Edit, Download } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ImportTransactionsModal } from '@/components/forms/import-transactions-modal'
+import { TransactionCategoryPicker } from '@/components/transactions/transaction-category-picker'
 import { Checkbox } from '@/components/ui/checkbox'
-import type { RecurringIncome, Transaction } from '@/types/database.types'
+import type { Category, RecurringIncome, Transaction } from '@/types/database.types'
 import { MonthYearPicker } from '@/components/dashboard/month-year-picker'
 import {
   formatMesReferenciaLabel,
@@ -89,6 +90,7 @@ export default function TransactionsPage() {
     error,
     fetchTransactions,
     fetchIncomeTransactions,
+    updateTransaction,
     deleteTransaction,
     deleteTransactions,
   } = useTransactionsStore()
@@ -202,32 +204,50 @@ export default function TransactionsPage() {
     }
   }
 
-  const isAllSelected = transactions.length > 0 && selectedIds.size === transactions.length
-  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < transactions.length
-
-  const getCategoryName = (transaction: Transaction & { category?: any }) => {
-    // Prioridade 1: Categoria do JOIN (vem direto do Supabase)
+  const getCategoryForTransaction = (transaction: Transaction & { category?: Category & { color?: string | null } }) => {
     if (transaction.category?.name) {
-      return transaction.category.name
-    }
-    
-    // Prioridade 2: Buscar no store de categorias (fallback)
-    if (transaction.category_id) {
-      const category = categories.find(cat => cat.id === transaction.category_id)
-      if (category?.name) {
-        return category.name
+      return {
+        name: transaction.category.name,
+        color: transaction.category.color ?? null,
       }
-      
-      // Se não encontrou no store, pode ser que a categoria tenha sido deletada
-      // ou o store não foi carregado ainda
-      console.warn(`[Transactions Page] ⚠️ Categoria não encontrada no store para category_id: ${transaction.category_id}`)
-    } else {
-      // Se category_id é null, a transação não tem categoria associada
-      console.warn(`[Transactions Page] ⚠️ Transação ${transaction.id} não tem category_id`)
     }
-    
-    // Fallback final
-    return 'Categoria não encontrada'
+
+    if (transaction.category_id) {
+      const category = categories.find((cat) => cat.id === transaction.category_id) as
+        | (Category & { color?: string | null })
+        | undefined
+      if (category?.name) {
+        return { name: category.name, color: category.color ?? null }
+      }
+    }
+
+    return { name: 'Categoria não encontrada', color: null }
+  }
+
+  const expenseCategories = useMemo(
+    () =>
+      categories.filter(
+        (cat) => cat.type === 'expense' || cat.type == null
+      ) as (Category & { color?: string | null })[],
+    [categories]
+  )
+
+  const handleCategoryChange = async (
+    transactionId: string,
+    categoryId: string,
+    category: Category & { color?: string | null }
+  ) => {
+    try {
+      await updateTransaction(
+        transactionId,
+        { category_id: categoryId },
+        { silent: true, category: { id: category.id, name: category.name, color: category.color } }
+      )
+      toast.success(`Categoria atualizada para ${category.name}`)
+    } catch {
+      toast.error('Erro ao atualizar categoria')
+      throw new Error('category update failed')
+    }
   }
 
   const formatCurrency = (value: number) => {
@@ -238,7 +258,12 @@ export default function TransactionsPage() {
   }
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR')
+    const datePart = dateString.split('T')[0]
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+      const [year, month, day] = datePart.split('-')
+      return `${day}/${month}/${year}`
+    }
+    return new Date(dateString + 'T12:00:00').toLocaleDateString('pt-BR')
   }
 
   const incomeFromTransactions = incomeTransactions.reduce(
@@ -260,6 +285,24 @@ export default function TransactionsPage() {
 
   const balance = totals.income - totals.expense
   const isPageLoading = loading || incomesLoading
+
+  const sortedTransactions = useMemo(() => {
+    return [...transactions].sort((a, b) => {
+      const dateCmp = b.transaction_date.localeCompare(a.transaction_date)
+      if (dateCmp !== 0) return dateCmp
+
+      const seqA = (a as Transaction & { import_sequence?: number | null }).import_sequence
+      const seqB = (b as Transaction & { import_sequence?: number | null }).import_sequence
+      if (seqA != null && seqB != null && seqA !== seqB) return seqA - seqB
+      if (seqA != null && seqB == null) return -1
+      if (seqA == null && seqB != null) return 1
+
+      return (a.created_at || '').localeCompare(b.created_at || '')
+    })
+  }, [transactions])
+
+  const isAllSelected = sortedTransactions.length > 0 && selectedIds.size === sortedTransactions.length
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < sortedTransactions.length
 
   if (isPageLoading) {
     return (
@@ -439,7 +482,7 @@ export default function TransactionsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {transactions.length === 0 ? (
+          {sortedTransactions.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-muted-foreground mb-4">
                 Nenhuma transação encontrada
@@ -452,6 +495,7 @@ export default function TransactionsPage() {
               </Link>
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -472,7 +516,10 @@ export default function TransactionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transactions.map((transaction) => (
+                {sortedTransactions.map((transaction) => {
+                  const categoryDisplay = getCategoryForTransaction(transaction)
+
+                  return (
                   <TableRow 
                     key={transaction.id}
                     className={selectedIds.has(transaction.id) ? 'bg-muted/50' : ''}
@@ -487,8 +534,16 @@ export default function TransactionsPage() {
                     <TableCell className="font-medium">
                       {transaction.description}
                     </TableCell>
-                    <TableCell>
-                      {getCategoryName(transaction)}
+                    <TableCell className="max-w-[160px] sm:max-w-[200px]">
+                      <TransactionCategoryPicker
+                        transactionId={transaction.id}
+                        categoryId={transaction.category_id}
+                        categoryName={categoryDisplay.name}
+                        categoryColor={categoryDisplay.color}
+                        categories={expenseCategories}
+                        onCategoryChange={handleCategoryChange}
+                        disabled={isDeleting}
+                      />
                     </TableCell>
                     <TableCell>
                       {formatDate(transaction.transaction_date)}
@@ -527,9 +582,11 @@ export default function TransactionsPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -11,6 +11,8 @@ export interface ExtractedTransaction {
     current: number
     total: number
   } | null
+  /** Posição sequencial na fatura (0 = primeira linha lida de cima para baixo) */
+  sequence_number?: number
 }
 
 export interface IBankStatementParser {

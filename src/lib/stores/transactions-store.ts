@@ -49,7 +49,8 @@ interface TransactionsStore {
   }) => Promise<void>
   updateTransaction: (
     id: string,
-    updates: Partial<Transaction> & { card_id?: string | null; notes?: string | null }
+    updates: Partial<Transaction> & { card_id?: string | null; notes?: string | null },
+    options?: { silent?: boolean; category?: { id: string; name: string; color?: string | null } | null }
   ) => Promise<void>
   deleteTransaction: (id: string) => Promise<void>
   deleteTransactions: (ids: string[]) => Promise<void>
@@ -122,7 +123,10 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
         query = query.eq('type', filters.transactionType)
       }
 
-      const { data, error } = await query.order('transaction_date', { ascending: false })
+      const { data, error } = await query
+        .order('transaction_date', { ascending: false })
+        .order('import_sequence', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true })
 
       if (error) {
         console.error('[Transactions Store] ❌ Erro ao buscar transações:', error)
@@ -403,9 +407,15 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
 
   updateTransaction: async (
     id: string,
-    updates: Partial<Transaction> & { card_id?: string | null; notes?: string | null }
+    updates: Partial<Transaction> & { card_id?: string | null; notes?: string | null },
+    options?: { silent?: boolean; category?: { id: string; name: string; color?: string | null } | null }
   ) => {
-    set({ loading: true, error: null })
+    const silent = options?.silent === true
+
+    if (!silent) {
+      set({ loading: true, error: null })
+    }
+
     try {
       const supabase = createClient()
 
@@ -437,6 +447,24 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
 
       if (error) throw error
 
+      if (silent) {
+        set((state) => ({
+          transactions: state.transactions.map((t) => {
+            if (t.id !== id) return t
+            const patched = {
+              ...t,
+              ...updates,
+              category_id: updates.category_id ?? t.category_id,
+            }
+            if (options?.category) {
+              ;(patched as Record<string, unknown>).category = options.category
+            }
+            return patched
+          }),
+        }))
+        return
+      }
+
       const refetchFilters = get().lastFetchFilters
       if (refetchFilters) {
         const normalizedFilters: TransactionsListFilters = {
@@ -453,7 +481,9 @@ export const useTransactionsStore = create<TransactionsStore>((set, get) => ({
       set({ error: (error as Error).message })
       throw error
     } finally {
-      set({ loading: false })
+      if (!silent) {
+        set({ loading: false })
+      }
     }
   },
 

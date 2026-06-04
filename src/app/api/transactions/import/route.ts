@@ -12,6 +12,7 @@ import { extractTextFromPDF, parseCreditCardBill, ExtractedTransaction } from '@
 import { recognizeCategory, recognizeCategoryLegacy, type Category } from '@/utils/category-recognition'
 import { TransactionDeduplicationService, type TransactionForDeduplication } from '@/services/transaction-deduplication-service'
 import { resolveMesReferenciaForImport, isValidMesReferencia } from '@/utils/mes-referencia'
+import { buildDynamicInstallmentDescription } from '@/utils/installment-description'
 
 function buildImportDuplicateKey(
   description: string,
@@ -160,6 +161,8 @@ export async function POST(request: NextRequest) {
             type: (cat.type === 'income' || cat.type === 'expense') ? (cat.type as 'income' | 'expense') : null
           }))
           
+          // Reconhecimento de categoria: descrição bruta → motor sanitiza em memória;
+          // descricao gravada no banco permanece intacta (trans.description).
           const categoryResults = await Promise.all(
             extractedTransactions.map(trans => 
               recognizeCategory(
@@ -190,6 +193,7 @@ export async function POST(request: NextRequest) {
               _fromPDF: true, // Flag para indicar que vem de PDF (não gerar parcelas automaticamente)
               _paymentMethod: paymentMethodFromForm, // Método de pagamento para uso na inserção
               _cardId: finalCardId, // ID do cartão para uso na inserção
+              _sequence_number: trans.sequence_number ?? index,
             }
           })
         } catch (pdfError) {
@@ -238,6 +242,12 @@ export async function POST(request: NextRequest) {
     if (transactions.length === 0) {
       return NextResponse.json({ error: 'Nenhuma transação encontrada no arquivo' }, { status: 400 })
     }
+
+    // Garante índice sequencial para CSV/XLSX e fallback quando o parser não atribuiu
+    transactions = transactions.map((t, i) => ({
+      ...t,
+      _sequence_number: t._sequence_number ?? i,
+    }))
 
     // ========================================
     // DEDUPLICAÇÃO: Buscar transações existentes e filtrar duplicatas
@@ -382,6 +392,13 @@ export async function POST(request: NextRequest) {
 
     // Atualiza a lista de transações para processar apenas as não-duplicadas
     transactions = transacoesParaImportar
+
+    // Preserva ordem sequencial da fatura (topo → base do PDF)
+    transactions.sort((a, b) => {
+      const seqA = Number((a as { _sequence_number?: number })._sequence_number ?? 0)
+      const seqB = Number((b as { _sequence_number?: number })._sequence_number ?? 0)
+      return seqA - seqB
+    })
 
     // Processa e insere transações
     let successCount = 0
@@ -670,13 +687,17 @@ export async function POST(request: NextRequest) {
           cardId = finalCardId
         }
 
+        const importSequence =
+          (transaction as { _sequence_number?: number })._sequence_number ?? null
+
         // Se deve gerar automaticamente as parcelas futuras
         if (shouldAutoGenerateInstallments) {
           // Calcula o valor de cada parcela
           // IMPORTANTE: Para PDFs, o valor já é da parcela individual, então usa esse valor
           // Para outros formatos, divide o valor total pelo número de parcelas
           const installmentAmount = isFromPDF ? amount : (amount / totalInstallments!)
-          const baseDate = new Date(formatDate(String(transaction.data)))
+          // Força horário local ao meio-dia para evitar que UTC-3 retroceda a data ao dia anterior
+          const baseDate = new Date(formatDate(String(transaction.data)) + 'T12:00:00')
           let installmentsCreated = 0
           const installmentErrors: string[] = []
 
@@ -720,12 +741,20 @@ export async function POST(request: NextRequest) {
               installmentDate.setMonth(installmentDate.getMonth() + monthsDiff)
             }
 
-            const installmentDescription = `${String(transaction.descricao)} (${currentInstallmentNumber}/${totalInstallments})`
+            const installmentDescription = buildDynamicInstallmentDescription(
+              String(transaction.descricao),
+              currentInstallmentNumber,
+              totalInstallments!
+            )
 
             // IMPORTANTE: card_id deve ser null para métodos que não são crédito/débito
             const finalCardIdForInstallment = (validatedMethod === 'credit' || validatedMethod === 'debit') ? cardId : null
             
-            const installmentDateStr = installmentDate.toISOString().split('T')[0]
+            // Extrai data usando métodos locais para preservar o dia correto (evita desvio UTC)
+            const iy = installmentDate.getFullYear()
+            const im = String(installmentDate.getMonth() + 1).padStart(2, '0')
+            const id = String(installmentDate.getDate()).padStart(2, '0')
+            const installmentDateStr = `${iy}-${im}-${id}`
             const installmentMesReferencia = resolveMesReferenciaForImport({
               transactionDate: installmentDateStr,
               paymentMethod: validatedMethod,
@@ -748,6 +777,7 @@ export async function POST(request: NextRequest) {
               expense_nature: 'installment',
               installment_number: currentInstallmentNumber,
               total_installments: totalInstallments,
+              import_sequence: importSequence,
               notes: transaction.observacoes || null,
             })
 
@@ -783,10 +813,11 @@ export async function POST(request: NextRequest) {
           // CORREÇÃO: Adiciona sufixo (X/Y) apenas se houver parcelamento válido
           // Isso permite que descrições com PARC##/## sejam preservadas e recebam o sufixo visual
           if (totalInstallments && totalInstallments > 1 && installmentNumber) {
-            // Verifica se a descrição já contém o padrão PARC##/##
-            // Se sim, adiciona apenas o sufixo (X/Y) para visualização
-            // Se não, mantém a descrição original
-            finalDescription = `${finalDescription} (${installmentNumber}/${totalInstallments})`
+            finalDescription = buildDynamicInstallmentDescription(
+              finalDescription,
+              installmentNumber,
+              totalInstallments
+            )
           }
 
           // Se é parcela específica, calcula o valor da parcela
@@ -824,6 +855,7 @@ export async function POST(request: NextRequest) {
             expense_nature: validatedExpenseNature,
             installment_number: installmentNumber,
             total_installments: totalInstallments,
+            import_sequence: importSequence,
             notes: transaction.observacoes || null,
           })
 
@@ -1154,7 +1186,15 @@ async function parsePDFFile(file: File): Promise<ExtractedTransaction[]> {
  * Format date from various formats to YYYY-MM-DD
  */
 function formatDate(dateStr: string): string {
-  if (!dateStr) return new Date().toISOString().split('T')[0]
+  const todayLocal = () => {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  if (!dateStr) return todayLocal()
 
   // Remove whitespace
   dateStr = dateStr.trim()
@@ -1176,16 +1216,18 @@ function formatDate(dateStr: string): string {
     return `${year}-${month}-${day}`
   }
 
-  // Default: try to parse as date
+  // Default: parse with noon local time to avoid UTC day shift
   try {
-    const date = new Date(dateStr)
+    const date = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`)
     if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0]
+      const y = date.getFullYear()
+      const m = String(date.getMonth() + 1).padStart(2, '0')
+      const d = String(date.getDate()).padStart(2, '0')
+      return `${y}-${m}-${d}`
     }
   } catch {
     // Ignore
   }
 
-  // Fallback: today
-  return new Date().toISOString().split('T')[0]
+  return todayLocal()
 }
