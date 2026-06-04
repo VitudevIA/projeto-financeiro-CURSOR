@@ -56,29 +56,20 @@ export class NubankParser extends BaseBankStatementParser {
       return transactions
     }
 
-    // Mapeamento de meses abreviados
-    const meses: { [key: string]: string } = {
-      'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05', 'jun': '06',
-      'jul': '07', 'ago': '08', 'set': '09', 'out': '10', 'nov': '11', 'dez': '12',
-    }
+    const meses = BaseBankStatementParser.MESES_ABREV
 
-    // Extrai ano da fatura
-    let currentYear = new Date().getFullYear()
-    const yearMatch = text.match(/FATURA\s+\d{1,2}\s+\w{3}\s+(\d{4})/i) || text.match(/\b(20\d{2})\b/)
-    if (yearMatch) {
-      currentYear = parseInt(yearMatch[1])
-    }
+    const vencimento = this.extrairMesAnoVencimento(text)
+    console.log(`[${this.bankName} Parser] Vencimento referência: ${vencimento.mes}/${vencimento.ano}`)
 
-    // Divide o texto em linhas
-    const linhas = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
-    
-    console.log(`[${this.bankName} Parser] Processando ${linhas.length} linhas`)
-
-    // Padrão 1: "DD MMM DESCRIÇÃO VALOR" (formato mais comum do Nubank)
-    const padraoNubankCompleto = /^(\d{1,2})\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\s+(.+?)\s+([-]?\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})|[-]?\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*R\$)/i
+    // Padrão 1: "DD MMM DESCRIÇÃO VALOR" (MAI, mai, etc.)
+    const padraoNubankCompleto = /^(\d{1,2})\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b\s+(.+?)\s+([-]?\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})|[-]?\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*R\$)/i
     
     // Padrão 2: "DD/MM/YYYY DESCRIÇÃO VALOR"
     const padraoNubankDataCompleta = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(.+?)\s+([-]?\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})|[-]?\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*R\$)/i
+
+    const linhas = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+    
+    console.log(`[${this.bankName} Parser] Processando ${linhas.length} linhas`)
 
     for (let i = 0; i < linhas.length; i++) {
       const linha = linhas[i]
@@ -110,7 +101,7 @@ export class NubankParser extends BaseBankStatementParser {
           i++ // Pula a linha seguinte
         }
 
-        data = `${currentYear}-${mes}-${dia}`
+        data = this.buildNubankDate(dia, mes, vencimento)
 
         // Extrai parcelamento
         parcelamento = this.extractInstallments(descricao)
@@ -134,7 +125,7 @@ export class NubankParser extends BaseBankStatementParser {
           const valorStr = match[6] || match[7]
           const sinal = linha.includes('-') ? '-' : '+'
 
-          data = `${ano}-${mes}-${dia}`
+          data = this.toIsoDate(parseInt(ano, 10), mes, dia)
 
           // Extrai parcelamento
           parcelamento = this.extractInstallments(descricao)
@@ -152,7 +143,7 @@ export class NubankParser extends BaseBankStatementParser {
 
       // Fallback: tenta encontrar data e valor em linhas separadas
       if (!data && !valor) {
-        const dataMatch = linha.match(/^(\d{1,2})\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/i)
+        const dataMatch = linha.match(/^(\d{1,2})\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\b/i)
         if (dataMatch && i + 1 < linhas.length) {
           const dia = dataMatch[1].padStart(2, '0')
           const mesAbr = dataMatch[2].toLowerCase()
@@ -166,7 +157,7 @@ export class NubankParser extends BaseBankStatementParser {
             const valorStr = valorMatch[2] || valorMatch[3]
             const sinal = linhaSeguinte.includes('-') ? '-' : '+'
 
-            data = `${currentYear}-${mes}-${dia}`
+            data = this.buildNubankDate(dia, mes, vencimento)
             parcelamento = this.extractInstallments(descricao)
             valor = this.parseMonetaryValue(valorStr || '0')
             
@@ -208,6 +199,52 @@ export class NubankParser extends BaseBankStatementParser {
     const uniqueTransactions = this.removeDuplicates(transactions)
     console.log(`[${this.bankName} Parser] ✅ ${uniqueTransactions.length} transações extraídas`)
     return uniqueTransactions
+  }
+
+  /**
+   * Monta YYYY-MM-DD aplicando ano incoerente quando mês da compra > mês de vencimento
+   */
+  private buildNubankDate(
+    dia: string,
+    mes: string,
+    vencimento: { mes: number; ano: number }
+  ): string {
+    const txMonth = parseInt(mes, 10)
+    const year = this.resolveTransactionYear(txMonth, vencimento.mes, vencimento.ano)
+    return this.toIsoDate(year, mes, dia)
+  }
+
+  /**
+   * Extrai mês/ano de vencimento da fatura para inferência de ano das transações
+   */
+  private extrairMesAnoVencimento(text: string): { mes: number; ano: number } {
+    const meses = BaseBankStatementParser.MESES_ABREV
+
+    const vencimentoSlash = text.match(/vencimento[:\s]*(\d{1,2})\/(\d{1,2})\/(\d{4})/i)
+    if (vencimentoSlash) {
+      return {
+        mes: parseInt(vencimentoSlash[2], 10),
+        ano: parseInt(vencimentoSlash[3], 10),
+      }
+    }
+
+    const vencimentoExtenso = text.match(
+      /vencimento[:\s]*(\d{1,2})\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.?\s+(\d{4})/i
+    )
+    if (vencimentoExtenso) {
+      const mesStr = meses[vencimentoExtenso[2].toLowerCase()] || '01'
+      return {
+        mes: parseInt(mesStr, 10),
+        ano: parseInt(vencimentoExtenso[3], 10),
+      }
+    }
+
+    const faturaMatch = text.match(/FATURA\s+\d{1,2}\s+\w{3}\s+(\d{4})/i)
+    const ano = faturaMatch ? parseInt(faturaMatch[1], 10) : new Date().getFullYear()
+    const yearMatch = text.match(/\b(20\d{2})\b/)
+    const anoFinal = yearMatch ? parseInt(yearMatch[1], 10) : ano
+
+    return { mes: new Date().getMonth() + 1, ano: anoFinal }
   }
 
   /**

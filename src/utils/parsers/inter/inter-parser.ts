@@ -9,6 +9,15 @@ export class InterParser extends BaseBankStatementParser {
   readonly bankId = 'inter'
   readonly bankName = 'Banco Inter'
 
+  private static readonly MESES_ABREV: Record<string, string> = {
+    jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+    jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12',
+  }
+
+  /** Padrão de data por extenso: "10 de jun. 2025" ou "26 de mar. 2026" */
+  private static readonly PADRAO_DATA_EXTENSO =
+    /(\d{1,2})\s+de\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.?\s+(\d{4})/i
+
   private readonly indicators = [
     'banco inter',
     'cartão inter',
@@ -81,11 +90,7 @@ export class InterParser extends BaseBankStatementParser {
     const mesAnoFatura = this.extrairMesAnoFaturaVigente(text)
     console.log(`[${this.bankName} Parser] Mês/ano da fatura: ${mesAnoFatura.mes}/${mesAnoFatura.ano}`)
 
-    // Mapeamento de meses abreviados
-    const meses: { [key: string]: string } = {
-      'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05', 'jun': '06',
-      'jul': '07', 'ago': '08', 'set': '09', 'out': '10', 'nov': '11', 'dez': '12',
-    }
+    const meses = InterParser.MESES_ABREV
 
     // Divide o texto em linhas
     const linhas = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
@@ -119,7 +124,7 @@ export class InterParser extends BaseBankStatementParser {
       // Procura por linhas que começam com data no formato do Inter (DD de mmm. YYYY)
       for (let i = 0; i < linhas.length; i++) {
         const linha = linhas[i]
-        if (/\d{1,2}\s+de\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.\s+\d{4}/i.test(linha)) {
+        if (InterParser.PADRAO_DATA_EXTENSO.test(linha)) {
           // Verifica se a linha anterior tem indicadores de seção
           if (i > 0) {
             const linhaAnterior = linhas[i - 1].toLowerCase()
@@ -146,7 +151,7 @@ export class InterParser extends BaseBankStatementParser {
         if (linhas[i].toLowerCase().includes('resumo da fatura')) {
           // Procura pela primeira linha com data após o resumo
           for (let j = i + 1; j < Math.min(i + 20, linhas.length); j++) {
-            if (/\d{1,2}\s+de\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.\s+\d{4}/i.test(linhas[j])) {
+            if (InterParser.PADRAO_DATA_EXTENSO.test(linhas[j])) {
               indiceInicio = j
               console.log(`[${this.bankName} Parser] Usando fallback: início na linha ${j} (após resumo na linha ${i})`)
               break
@@ -167,8 +172,9 @@ export class InterParser extends BaseBankStatementParser {
     const linhasProcessar = linhas.slice(indiceInicio)
     console.log(`[${this.bankName} Parser] Processando ${linhasProcessar.length} linhas`)
 
-    // Padrão principal do Inter: "DD de mmm. YYYY DESCRIÇÃO -R$ VALOR" ou "+ R$ VALOR"
-    const padraoInterCompleto = /(\d{1,2})\s+de\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.\s+(\d{4})(.+?)([+-]?\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2}))$/i
+    // Padrão principal: "DD de mmm. YYYY DESCRIÇÃO -R$ VALOR" (ponto após mês opcional)
+    const padraoInterCompleto =
+      /(\d{1,2})\s+de\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.?\s+(\d{4})(.+?)([+-]?\s*R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2}))$/i
 
     for (let i = 0; i < linhasProcessar.length; i++) {
       const linha = linhasProcessar[i]
@@ -187,7 +193,7 @@ export class InterParser extends BaseBankStatementParser {
       if (match) {
         const dia = match[1].padStart(2, '0')
         const mesAbr = match[2].toLowerCase()
-        const ano = match[3]
+        const ano = parseInt(match[3], 10)
         const mes = meses[mesAbr] || '01'
         descricao = match[4].trim()
         const valorStr = match[6]
@@ -203,13 +209,17 @@ export class InterParser extends BaseBankStatementParser {
           }
         }
 
-        // Ajusta data para parcelas: usa mês/ano da fatura vigente
-        let dataFormatada = ''
+        // Ano explícito na linha → YYYY-MM-DD literal
+        let dataFormatada: string
         if (parcelamento && parcelamento.total > 1 && mesAnoFatura.mes && mesAnoFatura.ano) {
-          dataFormatada = `${mesAnoFatura.ano}-${mesAnoFatura.mes}-${dia}`
-          console.log(`[${this.bankName} Parser] 📅 Data ajustada: ${ano}-${mes}-${dia} (original) -> ${dataFormatada} (parcela ${parcelamento.current}/${parcelamento.total})`)
+          dataFormatada = this.toIsoDate(
+            parseInt(mesAnoFatura.ano, 10),
+            mesAnoFatura.mes,
+            dia
+          )
+          console.log(`[${this.bankName} Parser] 📅 Data ajustada (parcela): ${this.toIsoDate(ano, mes, dia)} -> ${dataFormatada}`)
         } else {
-          dataFormatada = `${ano}-${mes}-${dia}`
+          dataFormatada = this.toIsoDate(ano, mes, dia)
         }
         data = dataFormatada
 
@@ -234,14 +244,18 @@ export class InterParser extends BaseBankStatementParser {
           const sinal = match[3]?.includes('+') ? '+' : '-'
 
           const [dia, mes, ano] = dataStr.split('/')
-          data = `${ano}-${mes}-${dia.padStart(2, '0')}`
+          data = this.toIsoDate(parseInt(ano, 10), mes, dia)
 
           // Extrai parcelamento
           parcelamento = this.extractInstallments(descricao)
           
           // Ajusta data para parcelas
           if (parcelamento && parcelamento.total > 1 && mesAnoFatura.mes && mesAnoFatura.ano) {
-            data = `${mesAnoFatura.ano}-${mesAnoFatura.mes}-${dia.padStart(2, '0')}`
+            data = this.toIsoDate(
+              parseInt(mesAnoFatura.ano, 10),
+              mesAnoFatura.mes,
+              dia
+            )
           }
 
           valor = this.parseMonetaryValue(valorStr)

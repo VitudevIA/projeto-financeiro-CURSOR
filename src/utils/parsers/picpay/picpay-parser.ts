@@ -78,9 +78,8 @@ export class PicPayParser extends BaseBankStatementParser {
     const textoPreparado = preprocessPicPayBillText(text)
     const linhas = textoPreparado.split('\n').map(l => l.trim()).filter(l => l.length > 0)
     
-    // Extrai ano do texto
-    const yearMatch = textoPreparado.match(/\b(20\d{2})\b/)
-    const currentYear = yearMatch ? parseInt(yearMatch[1]) : new Date().getFullYear()
+    const vencimento = this.extrairMesAnoVencimento(textoPreparado)
+    console.log(`[${this.bankName} Parser] Vencimento referência: ${vencimento.mes}/${vencimento.ano}`)
 
     // Processa TODAS as linhas (múltiplos blocos: Picpay Card, final 9024, final 9032, etc.)
     const linhasProcessar = linhas
@@ -354,19 +353,17 @@ export class PicPayParser extends BaseBankStatementParser {
       
       console.log(`[${this.bankName} Parser] Descrição preservada (com PARC): "${descricaoLimpa.substring(0, 50)}" (original: "${descricaoOriginal.substring(0, 50)}")`)
 
-      // Formata data
+      // Formata data (YYYY-MM-DD literal, com ano incoerente para DD/MM)
       let data: string
       if (dataStr.includes('/')) {
         const partes = dataStr.split('/')
         if (partes.length === 3) {
-          // DD/MM/YYYY
-          data = `${partes[2]}-${partes[1]}-${partes[0]}`
+          data = this.toIsoDate(parseInt(partes[2], 10), partes[1], partes[0])
         } else {
-          // DD/MM
-          data = this.formatDate(dataStr, currentYear)
+          data = this.formatDateWithBillDue(dataStr, vencimento.mesNum, vencimento.anoNum)
         }
       } else {
-        data = this.formatDate(dataStr, currentYear)
+        data = this.formatDateWithBillDue(dataStr, vencimento.mesNum, vencimento.anoNum)
       }
 
       // Converte valor - CRÍTICO: garante que não está pegando valores concatenados
@@ -642,6 +639,34 @@ export class PicPayParser extends BaseBankStatementParser {
     // Se não encontrou padrão PARC explícito, retorna null
     // NÃO tenta padrões genéricos para evitar falsos positivos
     return null
+  }
+
+  private extrairMesAnoVencimento(text: string): {
+    mes: string
+    ano: string
+    mesNum: number
+    anoNum: number
+  } {
+    const vencimentoMatch = text.match(/vencimento[:\s]*(\d{2})\/(\d{2})\/(\d{4})/i)
+    if (vencimentoMatch) {
+      return {
+        mes: vencimentoMatch[2],
+        ano: vencimentoMatch[3],
+        mesNum: parseInt(vencimentoMatch[2], 10),
+        anoNum: parseInt(vencimentoMatch[3], 10),
+      }
+    }
+
+    const yearMatch = text.match(/\b(20\d{2})\b/)
+    const anoNum = yearMatch ? parseInt(yearMatch[1], 10) : new Date().getFullYear()
+    const mesNum = new Date().getMonth() + 1
+
+    return {
+      mes: String(mesNum).padStart(2, '0'),
+      ano: String(anoNum),
+      mesNum,
+      anoNum,
+    }
   }
 
   private deveIgnorarLinha(linha: string): boolean {

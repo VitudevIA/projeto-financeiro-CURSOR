@@ -62,6 +62,60 @@ export abstract class BaseBankStatementParser implements IBankStatementParser {
   }
 
   /**
+   * Mapa estático de meses abreviados (jan–dez) → numeral com dois dígitos
+   */
+  protected static readonly MESES_ABREV: Record<string, string> = {
+    jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
+    jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12',
+  }
+
+  /**
+   * Monta YYYY-MM-DD de forma literal, sem conversão de fuso horário
+   */
+  protected toIsoDate(year: number, month: string | number, day: string | number): string {
+    const m = String(month).padStart(2, '0')
+    const d = String(day).padStart(2, '0')
+    return `${year}-${m}-${d}`
+  }
+
+  /**
+   * Ano incoerente: transações de meses posteriores ao vencimento pertencem ao ano anterior
+   */
+  protected resolveTransactionYear(
+    transactionMonth: number,
+    billDueMonth: number,
+    billDueYear: number
+  ): number {
+    if (transactionMonth > billDueMonth) {
+      return billDueYear - 1
+    }
+    return billDueYear
+  }
+
+  /**
+   * Formata DD/MM ou DD/MM/YYYY usando mês/ano de vencimento da fatura como referência
+   */
+  protected formatDateWithBillDue(
+    dateStr: string,
+    billDueMonth: number,
+    billDueYear: number
+  ): string {
+    const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/)
+    if (!match) return dateStr
+
+    const day = match[1].padStart(2, '0')
+    const month = match[2].padStart(2, '0')
+
+    if (match[3]) {
+      return this.toIsoDate(parseInt(match[3], 10), month, day)
+    }
+
+    const txMonth = parseInt(month, 10)
+    const year = this.resolveTransactionYear(txMonth, billDueMonth, billDueYear)
+    return this.toIsoDate(year, month, day)
+  }
+
+  /**
    * Formata data DD/MM para YYYY-MM-DD
    * Se não tiver ano, usa o ano extraído do texto ou ano atual
    */
@@ -71,18 +125,21 @@ export abstract class BaseBankStatementParser implements IBankStatementParser {
 
     const day = match[1].padStart(2, '0')
     const month = match[2].padStart(2, '0')
-    // Garante que finalYear seja sempre string
-    let finalYear = year 
-      ? year.toString() 
-      : (match[3] || new Date().getFullYear().toString())
+    let finalYear = year
+      ? year
+      : parseInt(match[3] || String(new Date().getFullYear()), 10)
 
-    // Ajusta ano se a data estiver no futuro
-    const parsedDate = new Date(parseInt(finalYear), parseInt(month) - 1, parseInt(day))
-    if (parsedDate > new Date()) {
-      finalYear = (parseInt(finalYear) - 1).toString()
+    if (!match[3] && year) {
+      return this.toIsoDate(finalYear, month, day)
     }
 
-    return `${finalYear}-${month}-${day}`
+    // Ajusta ano se a data estiver no futuro (fallback legado)
+    const parsedDate = new Date(finalYear, parseInt(month, 10) - 1, parseInt(day, 10))
+    if (parsedDate > new Date()) {
+      finalYear = finalYear - 1
+    }
+
+    return this.toIsoDate(finalYear, month, day)
   }
 
   /**
