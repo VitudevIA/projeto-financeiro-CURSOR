@@ -45,30 +45,180 @@ function buildImportDuplicateKey(
   return `${buildImportDuplicateIdentityKey(description, transactionDate, mesReferencia)}|${Number(amount).toFixed(2)}`
 }
 
+type DuplicateMatchOptions = {
+  excludedIds?: Set<string>
+  excludedBatchIndexes?: Set<number>
+}
+
+function findExactDuplicateMatch(
+  candidates: ImportExistingTransaction[],
+  description: string,
+  amount: number,
+  transactionDate: string,
+  mesReferencia: string,
+  excludedIds: Set<string>
+): ImportExistingTransaction | null {
+  const key = buildImportDuplicateKey(description, amount, transactionDate, mesReferencia)
+
+  return (
+    candidates.find(
+      (candidate) =>
+        Boolean(candidate.id) &&
+        !excludedIds.has(candidate.id) &&
+        buildImportDuplicateKey(
+          candidate.description,
+          candidate.amount,
+          candidate.transaction_date,
+          candidate.mes_referencia
+        ) === key
+    ) ?? null
+  )
+}
+
 function findTolerantDuplicateMatch(
   candidates: ImportExistingTransaction[],
   description: string,
   amount: number,
   transactionDate: string,
-  mesReferencia: string
-): ImportExistingTransaction | null {
+  mesReferencia: string,
+  options: DuplicateMatchOptions = {}
+): { match: ImportExistingTransaction; index: number } | null {
   const identityKey = buildImportDuplicateIdentityKey(
     description,
     transactionDate,
     mesReferencia
   )
 
-  return (
-    candidates.find(
-      (candidate) =>
-        buildImportDuplicateIdentityKey(
-          candidate.description,
-          candidate.transaction_date,
-          candidate.mes_referencia
-        ) === identityKey &&
-        Math.abs(candidate.amount - amount) <= IMPORT_AMOUNT_DUPLICATE_TOLERANCE
-    ) ?? null
-  )
+  for (let index = 0; index < candidates.length; index++) {
+    const candidate = candidates[index]
+
+    if (candidate.id && options.excludedIds?.has(candidate.id)) {
+      continue
+    }
+    if (options.excludedBatchIndexes?.has(index)) {
+      continue
+    }
+
+    const candidateIdentityKey = buildImportDuplicateIdentityKey(
+      candidate.description,
+      candidate.transaction_date,
+      candidate.mes_referencia
+    )
+
+    if (
+      candidateIdentityKey === identityKey &&
+      Math.abs(candidate.amount - amount) <= IMPORT_AMOUNT_DUPLICATE_TOLERANCE
+    ) {
+      return { match: candidate, index }
+    }
+  }
+
+  return null
+}
+
+const PAGAMENTO_SANITIZE_REGEX =
+  /^(pagamento|pgto|pag\.)\b|pagamento.*fatura|pagamento.*antecipado|pagamento.*recebido|pagamentos e financiamentos/i
+
+const ESTORNO_SANITIZE_REGEX = /estorno|cancelamento|reembolso|desconto/i
+
+const UNICODE_MINUS_CHARS_REGEX = /[\u2212\u2013\u2014]/g
+
+function normalizeImportedAmountString(raw: unknown): string {
+  return String(raw ?? '')
+    .trim()
+    .replace(UNICODE_MINUS_CHARS_REGEX, '-')
+    .replace(/^(-)+/, '-')
+}
+
+function parseImportedAmountValue(raw: unknown): number {
+  let valorStr = normalizeImportedAmountString(raw)
+
+  if (valorStr.includes(',') && valorStr.includes('.')) {
+    valorStr = valorStr.replace(/\./g, '').replace(',', '.')
+  } else if (valorStr.includes(',')) {
+    valorStr = valorStr.replace(',', '.')
+  }
+
+  return parseFloat(valorStr)
+}
+
+/**
+ * Pipeline universal pós-extração: remove pagamentos e normaliza sinais de estorno.
+ * Despesas permanecem positivas no payload; créditos/estornos entram negativos.
+ */
+function sanitizeImportedTransactions<T extends Record<string, unknown>>(
+  transactions: T[]
+): {
+  transactions: T[]
+  removedPayments: number
+  normalizedRefunds: number
+} {
+  let removedPayments = 0
+  let normalizedRefunds = 0
+
+  const sanitized = transactions
+    .filter((transaction) => {
+      const descricao = String(transaction.descricao ?? '').trim()
+      if (PAGAMENTO_SANITIZE_REGEX.test(descricao)) {
+        removedPayments++
+        return false
+      }
+      return true
+    })
+    .map((transaction) => {
+      const descricao = String(transaction.descricao ?? '').trim()
+      const rawValor = transaction.valor
+      const normalizedValorStr = normalizeImportedAmountString(rawValor)
+      const hasExplicitNegative = normalizedValorStr.startsWith('-')
+      const isEstorno =
+        ESTORNO_SANITIZE_REGEX.test(descricao) || hasExplicitNegative
+
+      const parsedAmount = parseImportedAmountValue(rawValor)
+      if (isNaN(parsedAmount) || parsedAmount === 0) {
+        return transaction
+      }
+
+      if (isEstorno) {
+        normalizedRefunds++
+        return {
+          ...transaction,
+          valor: (-Math.abs(parsedAmount)).toFixed(2),
+          _isEstorno: true,
+        }
+      }
+
+      return {
+        ...transaction,
+        valor: Math.abs(parsedAmount).toFixed(2),
+      }
+    })
+
+  return { transactions: sanitized, removedPayments, normalizedRefunds }
+}
+
+/**
+ * Diferencia transações gêmeas do mesmo PDF (mesma data, descrição e valor)
+ * anexando sufixo numérico para contornar unique constraints no banco.
+ */
+function tagTwinImportedTransactions<T extends Record<string, unknown>>(
+  transactions: T[]
+): T[] {
+  const ocorrenciasPdf = new Map<string, number>()
+
+  return transactions.map((transaction) => {
+    const chave = `${String(transaction.data ?? '')}-${String(transaction.descricao ?? '').trim()}-${String(transaction.valor ?? '').trim()}`
+    const contagem = (ocorrenciasPdf.get(chave) || 0) + 1
+    ocorrenciasPdf.set(chave, contagem)
+
+    if (contagem > 1) {
+      return {
+        ...transaction,
+        descricao: `${String(transaction.descricao ?? '').trim()} (${contagem})`,
+      }
+    }
+
+    return transaction
+  })
 }
 
 export async function POST(request: NextRequest) {
@@ -297,6 +447,30 @@ export async function POST(request: NextRequest) {
       _sequence_number: t._sequence_number ?? i,
     }))
 
+    const sanitizeResult = sanitizeImportedTransactions(transactions)
+    transactions = sanitizeResult.transactions
+    if (sanitizeResult.removedPayments > 0 || sanitizeResult.normalizedRefunds > 0) {
+      console.log(
+        `[API Import] Saneamento universal: ${sanitizeResult.removedPayments} pagamento(s) removido(s), ${sanitizeResult.normalizedRefunds} estorno(s)/desconto(s) normalizado(s)`
+      )
+    }
+
+    if (transactions.length === 0) {
+      return NextResponse.json(
+        { error: 'Nenhuma transação válida após saneamento (apenas pagamentos de fatura detectados).' },
+        { status: 400 }
+      )
+    }
+
+    const twinCountBefore = transactions.length
+    transactions = tagTwinImportedTransactions(transactions)
+    const twinsTagged = transactions.filter((t) => /\(\d+\)$/.test(String(t.descricao ?? ''))).length
+    if (twinsTagged > 0) {
+      console.log(
+        `[API Import] Twin tagging: ${twinsTagged} transação(ões) gêmea(s) diferenciada(s) de ${twinCountBefore} no lote`
+      )
+    }
+
     // ========================================
     // DEDUPLICAÇÃO: Buscar transações existentes e filtrar duplicatas
     // ========================================
@@ -464,28 +638,9 @@ export async function POST(request: NextRequest) {
       mes_referencia: t.mes_referencia ?? '',
     }))
 
-    const duplicateKeys = new Set<string>(
-      transacoesExistentesParaDuplicidade.map((t) =>
-        buildImportDuplicateKey(
-          t.description,
-          t.amount,
-          t.transaction_date,
-          t.mes_referencia
-        )
-      )
-    )
     const batchInsertedTransactions: ImportExistingTransaction[] = []
-
-    const registerDuplicateKeys = (
-      description: string,
-      amount: number,
-      transactionDate: string,
-      mesReferencia: string
-    ) => {
-      duplicateKeys.add(
-        buildImportDuplicateKey(description, amount, transactionDate, mesReferencia)
-      )
-    }
+    const matchedIds = new Set<string>()
+    const matchedBatchIndexes = new Set<number>()
 
     const tryInsertTransaction = async (
       record: Record<string, unknown>
@@ -494,20 +649,32 @@ export async function POST(request: NextRequest) {
       const amount = Number(record.amount)
       const transactionDate = String(record.transaction_date)
       const mesReferencia = String(record.mes_referencia)
-      const key = buildImportDuplicateKey(description, amount, transactionDate, mesReferencia)
 
-      if (duplicateKeys.has(key)) {
-        return 'ignored'
-      }
-
-      const existingMatch = findTolerantDuplicateMatch(
+      const exactMatch = findExactDuplicateMatch(
         transacoesExistentesParaDuplicidade,
         description,
         amount,
         transactionDate,
-        mesReferencia
+        mesReferencia,
+        matchedIds
       )
-      if (existingMatch) {
+      if (exactMatch) {
+        matchedIds.add(exactMatch.id)
+        return 'ignored'
+      }
+
+      const existingMatchResult = findTolerantDuplicateMatch(
+        transacoesExistentesParaDuplicidade,
+        description,
+        amount,
+        transactionDate,
+        mesReferencia,
+        { excludedIds: matchedIds }
+      )
+      if (existingMatchResult) {
+        const existingMatch = existingMatchResult.match
+        matchedIds.add(existingMatch.id)
+
         if (Math.abs(existingMatch.amount - amount) > 0.001) {
           const { error: updateError } = await supabase
             .from('transactions')
@@ -521,28 +688,23 @@ export async function POST(request: NextRequest) {
               updateError
             )
           } else {
-            registerDuplicateKeys(
-              description,
-              existingMatch.amount,
-              transactionDate,
-              mesReferencia
-            )
             existingMatch.amount = amount
           }
         }
 
-        registerDuplicateKeys(description, amount, transactionDate, mesReferencia)
         return 'ignored'
       }
 
-      const batchMatch = findTolerantDuplicateMatch(
+      const batchMatchResult = findTolerantDuplicateMatch(
         batchInsertedTransactions,
         description,
         amount,
         transactionDate,
-        mesReferencia
+        mesReferencia,
+        { excludedBatchIndexes: matchedBatchIndexes }
       )
-      if (batchMatch) {
+      if (batchMatchResult) {
+        matchedBatchIndexes.add(batchMatchResult.index)
         return 'ignored'
       }
 
@@ -552,7 +714,6 @@ export async function POST(request: NextRequest) {
         return 'error'
       }
 
-      registerDuplicateKeys(description, amount, transactionDate, mesReferencia)
       batchInsertedTransactions.push({
         id: '',
         description,
@@ -585,8 +746,9 @@ export async function POST(request: NextRequest) {
         }
         // Se só tem ponto, mantém como está (formato internacional)
         
+        const isEstorno = Boolean((transaction as { _isEstorno?: boolean })._isEstorno)
         const amount = parseFloat(valorStr)
-        if (isNaN(amount) || amount <= 0) {
+        if (isNaN(amount) || amount === 0 || (!isEstorno && amount <= 0)) {
           errorCount++
           errors.push(`Valor inválido para: ${transaction.descricao}`)
           continue

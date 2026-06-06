@@ -549,10 +549,28 @@ export default function TransactionsPage() {
                       {formatDate(transaction.transaction_date)}
                     </TableCell>
                     <TableCell>
-                      <span className={transaction.type === 'income' ? 'text-green-600' : 'text-red-600'}>
-                        {transaction.type === 'income' ? '+' : '-'}
-                        {formatCurrency(transaction.amount)}
-                      </span>
+                      {(() => {
+                        const amount = Number(transaction.amount)
+                        const amountPrefix =
+                          transaction.type === 'income'
+                            ? amount > 0
+                              ? '+'
+                              : ''
+                            : amount > 0
+                              ? '-'
+                              : ''
+
+                        return (
+                          <span
+                            className={
+                              transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                            }
+                          >
+                            {amountPrefix}
+                            {formatCurrency(amount)}
+                          </span>
+                        )
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Badge variant={transaction.type === 'income' ? 'default' : 'secondary'}>
