@@ -58,9 +58,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 })
     }
 
-    if (!recurringIncomes || recurringIncomes.length === 0) {
+    const activeRecurringIncomes = recurringIncomes ?? []
+
+    if (activeRecurringIncomes.length === 0) {
       return NextResponse.json(
-        { error: 'Nenhuma receita recorrente ativa encontrada' },
+        { error: 'Nenhuma receita recorrente ativa encontrada', transactions: [] },
         { status: 404 }
       )
     }
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
     const transactionsToInsert: TablesInsert<'transactions'>[] = []
     const provisionedCount: Record<string, number> = {}
 
-    for (const recurringIncome of recurringIncomes) {
+    for (const recurringIncome of activeRecurringIncomes) {
       let count = 0
 
       for (let i = 0; i < months; i++) {
@@ -133,6 +135,7 @@ export async function POST(request: NextRequest) {
         {
           message: 'Nenhuma transação nova para provisionar',
           provisioned: provisionedCount,
+          transactions: [],
         },
         { status: 200 }
       )
@@ -153,7 +156,7 @@ export async function POST(request: NextRequest) {
       {
         message: `${insertedTransactions?.length || 0} transações provisionadas com sucesso`,
         provisioned: provisionedCount,
-        transactions: insertedTransactions,
+        transactions: insertedTransactions ?? [],
       },
       { status: 200 }
     )

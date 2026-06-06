@@ -44,7 +44,7 @@ function recurringIncomeTotalForMesReferencia(
   const monthStart = new Date(year, month - 1, 1)
   const monthEnd = new Date(year, month, 0)
 
-  return incomes.reduce((sum, income) => {
+  return (incomes ?? []).reduce((sum, income) => {
     if (!income.is_active) return sum
 
     const start = new Date(income.start_date)
@@ -55,7 +55,7 @@ function recurringIncomeTotalForMesReferencia(
       if (end < monthStart) return sum
     }
 
-    const alreadyProvisioned = provisionedTransactions.some((t) => {
+    const alreadyProvisioned = (provisionedTransactions ?? []).some((t) => {
       const notes = (t as Transaction & { notes?: string | null }).notes
       return (
         (notes?.includes(income.id) ?? false) ||
@@ -97,6 +97,12 @@ export default function TransactionsPage() {
   const { recurringIncomes, fetchRecurringIncomes } = useRecurringIncomesStore()
   const { categories } = useCategoriesStore()
   const { cards, fetchCards } = useCardsStore()
+
+  const safeTransactions = transactions ?? []
+  const safeIncomeTransactions = incomeTransactions ?? []
+  const safeRecurringIncomes = recurringIncomes ?? []
+  const safeCategories = categories ?? []
+  const safeCards = cards ?? []
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isDeleting, setIsDeleting] = useState(false)
@@ -129,7 +135,7 @@ export default function TransactionsPage() {
 
   // Limpa seleção quando as transações mudarem (apenas IDs que não existem mais)
   useEffect(() => {
-    const existingIds = new Set(transactions.map(t => t.id))
+    const existingIds = new Set(safeTransactions.map(t => t.id))
     const newSelectedIds = new Set(
       Array.from(selectedIds).filter(id => existingIds.has(id))
     )
@@ -137,7 +143,7 @@ export default function TransactionsPage() {
       setSelectedIds(newSelectedIds)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions])
+  }, [safeTransactions])
 
   const applyFilters = () => {
     loadTransactionsData()
@@ -166,7 +172,7 @@ export default function TransactionsPage() {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(transactions.map(t => t.id)))
+      setSelectedIds(new Set(safeTransactions.map(t => t.id)))
     } else {
       setSelectedIds(new Set())
     }
@@ -213,7 +219,7 @@ export default function TransactionsPage() {
     }
 
     if (transaction.category_id) {
-      const category = categories.find((cat) => cat.id === transaction.category_id) as
+      const category = safeCategories.find((cat) => cat.id === transaction.category_id) as
         | (Category & { color?: string | null })
         | undefined
       if (category?.name) {
@@ -226,10 +232,10 @@ export default function TransactionsPage() {
 
   const expenseCategories = useMemo(
     () =>
-      categories.filter(
+      safeCategories.filter(
         (cat) => cat.type === 'expense' || cat.type == null
       ) as (Category & { color?: string | null })[],
-    [categories]
+    [safeCategories]
   )
 
   const handleCategoryChange = async (
@@ -266,18 +272,18 @@ export default function TransactionsPage() {
     return new Date(dateString + 'T12:00:00').toLocaleDateString('pt-BR')
   }
 
-  const incomeFromTransactions = incomeTransactions.reduce(
+  const incomeFromTransactions = safeIncomeTransactions.reduce(
     (sum, transaction) => sum + Number(transaction.amount || 0),
     0
   )
   const incomeFromRecurring = recurringIncomeTotalForMesReferencia(
-    recurringIncomes,
+    safeRecurringIncomes,
     filters.mesReferencia,
-    incomeTransactions
+    safeIncomeTransactions
   )
   const totals = {
     income: incomeFromTransactions + incomeFromRecurring,
-    expense: transactions.reduce(
+    expense: safeTransactions.reduce(
       (sum, transaction) => sum + Number(transaction.amount || 0),
       0
     ),
@@ -287,7 +293,7 @@ export default function TransactionsPage() {
   const isPageLoading = loading || incomesLoading
 
   const sortedTransactions = useMemo(() => {
-    return [...transactions].sort((a, b) => {
+    return [...safeTransactions].sort((a, b) => {
       const dateCmp = b.transaction_date.localeCompare(a.transaction_date)
       if (dateCmp !== 0) return dateCmp
 
@@ -299,7 +305,7 @@ export default function TransactionsPage() {
 
       return (a.created_at || '').localeCompare(b.created_at || '')
     })
-  }, [transactions])
+  }, [safeTransactions])
 
   const isAllSelected = sortedTransactions.length > 0 && selectedIds.size === sortedTransactions.length
   const isIndeterminate = selectedIds.size > 0 && selectedIds.size < sortedTransactions.length
@@ -373,7 +379,7 @@ export default function TransactionsPage() {
             <SelectTrigger><SelectValue placeholder="Todas as categorias" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas as categorias</SelectItem>
-              {categories.map(cat => (
+              {(safeCategories ?? []).map(cat => (
                 <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
               ))}
             </SelectContent>
@@ -385,7 +391,7 @@ export default function TransactionsPage() {
             <SelectTrigger><SelectValue placeholder="Todos os cartões" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os cartões</SelectItem>
-              {cards.map(card => (
+              {(safeCards ?? []).map(card => (
                 <SelectItem key={card.id} value={card.id}>{card.name}</SelectItem>
               ))}
             </SelectContent>
@@ -516,7 +522,7 @@ export default function TransactionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedTransactions.map((transaction) => {
+                {(sortedTransactions ?? []).map((transaction) => {
                   const categoryDisplay = getCategoryForTransaction(transaction)
 
                   return (

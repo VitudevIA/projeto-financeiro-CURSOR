@@ -578,11 +578,11 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
 
       set({
         kpis,
-        timeSeriesData,
-        categoryData,
-        topTransactions,
-        recentTransactions,
-        periodTransactionsCache: periodTransactions,
+        timeSeriesData: timeSeriesData ?? [],
+        categoryData: categoryData ?? [],
+        topTransactions: topTransactions ?? [],
+        recentTransactions: recentTransactions ?? [],
+        periodTransactionsCache: periodTransactions ?? [],
         totalTransactions: periodTransactions.length,
         total_incomes: Number(total_incomes.toFixed(2)),
         total_expenses: Number(total_expenses.toFixed(2)),

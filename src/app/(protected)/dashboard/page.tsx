@@ -105,6 +105,11 @@ export default function DashboardPage() {
   } = useDashboardStore()
   const router = useRouter()
 
+  const safeCategoryData = categoryData ?? []
+  const safeTopTransactions = topTransactions ?? []
+  const safeRecentTransactions = recentTransactions ?? []
+  const safePeriodTransactionsCache = periodTransactionsCache ?? []
+
   const [filters, setFilters] = useState<DashboardFiltersType>(() => {
     const now = new Date()
     const range = getMonthDateRange(now.getFullYear(), now.getMonth())
@@ -138,16 +143,16 @@ export default function DashboardPage() {
   const savingsHealth = getSavingsHealth(savings_rate)
   const budgetUsedPercentage = kpis?.budgetUsedPercentage ?? 0
   const selectedCategoryName =
-    categoryData.find((c) => c.categoryId === selectedCategoryFilter)?.name ?? 'Categoria'
+    safeCategoryData.find((c) => c.categoryId === selectedCategoryFilter)?.name ?? 'Categoria'
 
   const competenciaTimeSeries = useMemo(() => {
     const source =
       selectedCategoryFilter != null
-        ? periodTransactionsCache.filter((t) => t.category_id === selectedCategoryFilter)
-        : periodTransactionsCache
+        ? safePeriodTransactionsCache.filter((t) => t.category_id === selectedCategoryFilter)
+        : safePeriodTransactionsCache
 
     return buildCompetenciaExpenseSeriesFromTransactions(source)
-  }, [periodTransactionsCache, selectedCategoryFilter])
+  }, [safePeriodTransactionsCache, selectedCategoryFilter])
 
   const handleCategoryClick = (categoryId: string | null) => {
     setCategoryFilter(categoryId)
@@ -440,15 +445,15 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {categoryData.length > 0 ? (
+            {safeCategoryData.length > 0 ? (
               <>
                 <PieChartComponent
-                  data={categoryData}
+                  data={safeCategoryData}
                   activeCategoryId={selectedCategoryFilter}
                   onCategoryClick={handleCategoryClick}
                 />
                 <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-border/50">
-                  {categoryData.map((cat) => (
+                  {safeCategoryData.map((cat) => (
                     <Badge
                       key={cat.categoryId ?? cat.name}
                       variant={selectedCategoryFilter === cat.categoryId ? 'default' : 'outline'}
@@ -484,8 +489,8 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {categoryData.length > 0 ? (
-              <BarChartComponent data={categoryData.slice(0, 5)} />
+            {safeCategoryData.length > 0 ? (
+              <BarChartComponent data={safeCategoryData.slice(0, 5)} />
             ) : (
               <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
                 <Target className="h-12 w-12 mb-3 opacity-50" />
@@ -508,9 +513,9 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {topTransactions.length > 0 ? (
+            {safeTopTransactions.length > 0 ? (
               <div className="space-y-2">
-                {topTransactions.map((transaction, index) => (
+                {safeTopTransactions.map((transaction, index) => (
                   <div
                     key={transaction.id}
                     className="flex items-center justify-between p-4 border border-border/50 rounded-xl hover:bg-muted/50 transition-colors group"
@@ -581,9 +586,9 @@ export default function DashboardPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {recentTransactions.length > 0 ? (
+          {safeRecentTransactions.length > 0 ? (
             <div className="space-y-2">
-              {recentTransactions.map((transaction) => (
+              {safeRecentTransactions.map((transaction) => (
                 <div
                   key={transaction.id}
                   className="flex items-center justify-between p-4 border border-border/50 rounded-xl hover:bg-muted/50 transition-colors"

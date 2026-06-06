@@ -37,10 +37,10 @@ export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get)
       }
 
       const { data } = await response.json()
-      set({ recurringIncomes: data || [], loading: false })
+      set({ recurringIncomes: data ?? [], loading: false })
     } catch (error) {
       const errorMessage = (error as Error).message || 'Erro desconhecido'
-      set({ error: errorMessage, loading: false })
+      set({ error: errorMessage, loading: false, recurringIncomes: [] })
       console.error('Erro ao buscar receitas recorrentes:', error)
     }
   },
@@ -94,7 +94,7 @@ export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get)
 
       const { data } = await response.json()
       set((state) => ({
-        recurringIncomes: state.recurringIncomes.map((income) =>
+        recurringIncomes: (state.recurringIncomes ?? []).map((income) =>
           income.id === id ? data : income
         ),
         loading: false,
@@ -152,10 +152,11 @@ export const useRecurringIncomesStore = create<RecurringIncomesState>((set, get)
         return { error: data.error || 'Erro ao provisionar receitas' }
       }
 
-      const { data } = await response.json()
+      const payload = await response.json()
       set({ loading: false })
 
-      return { error: null, count: data.transactions?.length || 0 }
+      const transactions = payload.transactions ?? []
+      return { error: null, count: transactions.length }
     } catch (error) {
       const errorMessage = (error as Error).message || 'Erro desconhecido'
       set({ error: errorMessage, loading: false })
