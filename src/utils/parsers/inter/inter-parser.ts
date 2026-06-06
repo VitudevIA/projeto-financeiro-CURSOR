@@ -9,11 +9,6 @@ export class InterParser extends BaseBankStatementParser {
   readonly bankId = 'inter'
   readonly bankName = 'Banco Inter'
 
-  private static readonly MESES_ABREV: Record<string, string> = {
-    jan: '01', fev: '02', mar: '03', abr: '04', mai: '05', jun: '06',
-    jul: '07', ago: '08', set: '09', out: '10', nov: '11', dez: '12',
-  }
-
   /** Padrão de data por extenso: "10 de jun. 2025" ou "26 de mar. 2026" */
   private static readonly PADRAO_DATA_EXTENSO =
     /(\d{1,2})\s+de\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.?\s+(\d{4})/i
@@ -90,7 +85,7 @@ export class InterParser extends BaseBankStatementParser {
     const mesAnoFatura = this.extrairMesAnoFaturaVigente(text)
     console.log(`[${this.bankName} Parser] Mês/ano da fatura: ${mesAnoFatura.mes}/${mesAnoFatura.ano}`)
 
-    const meses = InterParser.MESES_ABREV
+    const meses = BaseBankStatementParser.MESES_ABREV
 
     // Divide o texto em linhas
     const linhas = text.split('\n').map(l => l.trim()).filter(l => l.length > 0)
