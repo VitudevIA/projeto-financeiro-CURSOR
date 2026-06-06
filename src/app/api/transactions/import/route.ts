@@ -18,13 +18,57 @@ import {
 } from '@/utils/mes-referencia'
 import { buildDynamicInstallmentDescription } from '@/utils/installment-description'
 
+const IMPORT_AMOUNT_DUPLICATE_TOLERANCE = 2
+
+type ImportExistingTransaction = {
+  id: string
+  description: string
+  amount: number
+  transaction_date: string
+  mes_referencia: string
+}
+
+function buildImportDuplicateIdentityKey(
+  description: string,
+  transactionDate: string,
+  mesReferencia: string
+): string {
+  return `${description.trim()}|${transactionDate}|${mesReferencia}`
+}
+
 function buildImportDuplicateKey(
   description: string,
   amount: number,
   transactionDate: string,
   mesReferencia: string
 ): string {
-  return `${description.trim()}|${Number(amount).toFixed(2)}|${transactionDate}|${mesReferencia}`
+  return `${buildImportDuplicateIdentityKey(description, transactionDate, mesReferencia)}|${Number(amount).toFixed(2)}`
+}
+
+function findTolerantDuplicateMatch(
+  candidates: ImportExistingTransaction[],
+  description: string,
+  amount: number,
+  transactionDate: string,
+  mesReferencia: string
+): ImportExistingTransaction | null {
+  const identityKey = buildImportDuplicateIdentityKey(
+    description,
+    transactionDate,
+    mesReferencia
+  )
+
+  return (
+    candidates.find(
+      (candidate) =>
+        buildImportDuplicateIdentityKey(
+          candidate.description,
+          candidate.transaction_date,
+          candidate.mes_referencia
+        ) === identityKey &&
+        Math.abs(candidate.amount - amount) <= IMPORT_AMOUNT_DUPLICATE_TOLERANCE
+    ) ?? null
+  )
 }
 
 export async function POST(request: NextRequest) {
@@ -264,7 +308,7 @@ export async function POST(request: NextRequest) {
     
     const { data: transacoesExistentesRaw, error: errorBuscarExistentes } = await supabase
       .from('transactions')
-      .select('description, amount, transaction_date, mes_referencia, type, installment_number, total_installments')
+      .select('id, description, amount, transaction_date, mes_referencia, type, installment_number, total_installments')
       .eq('user_id', user.id)
       .gte('transaction_date', doisAnosAtras.toISOString().split('T')[0])
       .order('transaction_date', { ascending: false })
@@ -410,17 +454,38 @@ export async function POST(request: NextRequest) {
     let ignoredDuplicateCount = 0
     const errors: string[] = []
 
+    const transacoesExistentesParaDuplicidade: ImportExistingTransaction[] = (
+      transacoesExistentesRaw || []
+    ).map((t) => ({
+      id: t.id,
+      description: t.description,
+      amount: parseFloat(String(t.amount)),
+      transaction_date: t.transaction_date,
+      mes_referencia: t.mes_referencia ?? '',
+    }))
+
     const duplicateKeys = new Set<string>(
-      (transacoesExistentesRaw || []).map((t) =>
+      transacoesExistentesParaDuplicidade.map((t) =>
         buildImportDuplicateKey(
           t.description,
-          parseFloat(String(t.amount)),
+          t.amount,
           t.transaction_date,
-          t.mes_referencia ?? ''
+          t.mes_referencia
         )
       )
     )
-    const batchDuplicateKeys = new Set<string>()
+    const batchInsertedTransactions: ImportExistingTransaction[] = []
+
+    const registerDuplicateKeys = (
+      description: string,
+      amount: number,
+      transactionDate: string,
+      mesReferencia: string
+    ) => {
+      duplicateKeys.add(
+        buildImportDuplicateKey(description, amount, transactionDate, mesReferencia)
+      )
+    }
 
     const tryInsertTransaction = async (
       record: Record<string, unknown>
@@ -431,7 +496,53 @@ export async function POST(request: NextRequest) {
       const mesReferencia = String(record.mes_referencia)
       const key = buildImportDuplicateKey(description, amount, transactionDate, mesReferencia)
 
-      if (duplicateKeys.has(key) || batchDuplicateKeys.has(key)) {
+      if (duplicateKeys.has(key)) {
+        return 'ignored'
+      }
+
+      const existingMatch = findTolerantDuplicateMatch(
+        transacoesExistentesParaDuplicidade,
+        description,
+        amount,
+        transactionDate,
+        mesReferencia
+      )
+      if (existingMatch) {
+        if (Math.abs(existingMatch.amount - amount) > 0.001) {
+          const { error: updateError } = await supabase
+            .from('transactions')
+            .update({ amount })
+            .eq('id', existingMatch.id)
+            .eq('user_id', user.id)
+
+          if (updateError) {
+            console.error(
+              '[API Import] Erro ao atualizar valor de transação duplicada:',
+              updateError
+            )
+          } else {
+            registerDuplicateKeys(
+              description,
+              existingMatch.amount,
+              transactionDate,
+              mesReferencia
+            )
+            existingMatch.amount = amount
+          }
+        }
+
+        registerDuplicateKeys(description, amount, transactionDate, mesReferencia)
+        return 'ignored'
+      }
+
+      const batchMatch = findTolerantDuplicateMatch(
+        batchInsertedTransactions,
+        description,
+        amount,
+        transactionDate,
+        mesReferencia
+      )
+      if (batchMatch) {
         return 'ignored'
       }
 
@@ -441,8 +552,14 @@ export async function POST(request: NextRequest) {
         return 'error'
       }
 
-      duplicateKeys.add(key)
-      batchDuplicateKeys.add(key)
+      registerDuplicateKeys(description, amount, transactionDate, mesReferencia)
+      batchInsertedTransactions.push({
+        id: '',
+        description,
+        amount,
+        transaction_date: transactionDate,
+        mes_referencia: mesReferencia,
+      })
       return 'inserted'
     }
 
